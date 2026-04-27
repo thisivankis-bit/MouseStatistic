@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+
+# Publish output
+publish/
+
+# Installer output (compiled .exe, but keep the .iss scripts)
+MouseClickTracker/installer/output/
+MouseClickServer/installer/output/
+
+# User-specific files
+*.user
+*.suo
+.vs/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
