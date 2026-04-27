@@ -10,14 +10,16 @@ public sealed class SyncService : IDisposable
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly string _endpoint;
     private readonly string _machineId;
+    private readonly string _userName;
     private readonly System.Threading.Timer _timer;
 
-    public SyncService(DataStore store, ActivityTracker activity, string serverUrl, string machineId)
+    public SyncService(DataStore store, ActivityTracker activity, string serverUrl, string machineId, string userName)
     {
         _store    = store;
         _activity = activity;
         _endpoint = serverUrl.TrimEnd('/') + "/api/sync";
         _machineId = machineId;
+        _userName = userName;
         // первый синк сразу при старте, потом каждую минуту
         _timer = new System.Threading.Timer(Sync, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
     }
@@ -29,6 +31,7 @@ public sealed class SyncService : IDisposable
             var payload = new
             {
                 machineId       = _machineId,
+                userName        = _userName,
                 totalClicks     = _store.Load(),
                 activeSeconds   = _activity.ActiveSeconds,
                 inactiveSeconds = _activity.InactiveSeconds,

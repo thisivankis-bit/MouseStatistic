@@ -51,11 +51,12 @@ procedure InitializeWizard;
 begin
   ServerUrlPage := CreateInputQueryPage(
     wpSelectDir,
-    'Настройка сервера',
-    'Укажите адрес центрального сервера статистики',
+    'Настройка',
+    'Укажите параметры подключения',
     'Введите адрес сервера (например: http://192.168.1.100:5001).' + #13#10 +
     'Оставьте пустым, если сервер не используется.');
   ServerUrlPage.Add('Адрес сервера:', False);
+  ServerUrlPage.Add('Имя пользователя:', False);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -68,6 +69,7 @@ begin
     Json :=
       '{' + #13#10 +
       '  "ServerUrl": "' + ServerUrlPage.Values[0] + '",' + #13#10 +
+      '  "UserName": "' + ServerUrlPage.Values[1] + '",' + #13#10 +
       '  "MachineId": ""' + #13#10 +
       '}';
     SaveStringToFile(ConfigPath, Json, False);

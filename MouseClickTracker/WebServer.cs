@@ -81,246 +81,334 @@ public sealed class WebServer : IDisposable
         <head>
             <meta charset="UTF-8">
             <title>Mouse Click Tracker</title>
+            <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; }
                 body {
-                    font-family: 'Segoe UI', sans-serif;
-                    background: #f0f2f5;
-                    padding: 40px 20px;
+                    font-family: 'Press Start 2P', monospace;
+                    background: #0d0d1a;
+                    color: #e0e0ff;
                     min-height: 100vh;
+                    padding: 32px 20px;
+                }
+                body::after {
+                    content: '';
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: repeating-linear-gradient(
+                        0deg, transparent, transparent 2px,
+                        rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px
+                    );
+                    pointer-events: none;
+                    z-index: 999;
                 }
                 .layout {
                     display: flex;
-                    gap: 24px;
+                    gap: 20px;
                     max-width: 860px;
                     margin: 0 auto;
                     align-items: flex-start;
                 }
-                .card {
-                    background: white;
-                    border-radius: 20px;
-                    padding: 40px 48px;
-                    box-shadow: 0 4px 32px rgba(0,0,0,0.07);
+                .panel {
+                    background: #13132a;
+                    border: 3px solid #3730a3;
+                    box-shadow: 4px 4px 0 #3730a3;
+                    padding: 28px 20px;
+                    width: 272px;
                     flex-shrink: 0;
-                    width: 300px;
                     text-align: center;
                 }
-                .section-label {
-                    color: #aaa;
-                    font-size: 0.75rem;
-                    letter-spacing: 0.08em;
+                .panel-title {
+                    font-size: 0.45rem;
+                    color: #818cf8;
+                    letter-spacing: 0.12em;
                     text-transform: uppercase;
-                    margin-bottom: 8px;
+                    margin-bottom: 20px;
+                }
+                #cv {
+                    display: block;
+                    margin: 0 auto 16px;
+                    image-rendering: pixelated;
+                    image-rendering: crisp-edges;
                 }
                 .count {
-                    font-size: 5rem;
-                    font-weight: 700;
-                    color: #111;
+                    font-size: 2rem;
+                    color: #ffffff;
                     line-height: 1;
-                    transition: color 0.15s;
-                    margin-bottom: 32px;
+                    margin-bottom: 6px;
+                    transition: color 0.1s;
                 }
-                .count.flash { color: #4f46e5; }
+                .count.flash { color: #818cf8; }
+                .count-sub {
+                    font-size: 0.38rem;
+                    color: #4f46e5;
+                    letter-spacing: 0.12em;
+                    margin-bottom: 22px;
+                }
                 .stats {
                     display: grid;
                     grid-template-columns: 1fr 1fr;
-                    gap: 12px;
-                    margin-bottom: 16px;
+                    gap: 6px;
+                    margin-bottom: 6px;
                 }
                 .stat {
-                    background: #f8f9fa;
-                    border-radius: 12px;
-                    padding: 14px 12px;
+                    background: #0d0d1a;
+                    border: 2px solid #1e1e4a;
+                    padding: 10px 6px;
                 }
-                .stat .stat-label {
-                    font-size: 0.7rem;
-                    color: #bbb;
-                    text-transform: uppercase;
+                .stat-label {
+                    font-size: 0.32rem;
                     letter-spacing: 0.06em;
-                    margin-bottom: 4px;
+                    text-transform: uppercase;
+                    margin-bottom: 6px;
+                    color: #44447a;
                 }
-                .stat .stat-value {
-                    font-size: 1.1rem;
-                    font-weight: 600;
-                    font-variant-numeric: tabular-nums;
-                }
-                .active .stat-value  { color: #16a34a; }
-                .inactive .stat-value { color: #dc2626; }
+                .stat-value { font-size: 0.52rem; }
+                .active .stat-value  { color: #4ade80; }
+                .inactive .stat-value { color: #f87171; }
                 .app-block {
-                    background: #f8f9fa;
-                    border-radius: 12px;
-                    padding: 12px 14px;
+                    background: #0d0d1a;
+                    border: 2px solid #1e1e4a;
+                    padding: 10px;
                     text-align: left;
                 }
+                .app-label {
+                    font-size: 0.3rem;
+                    color: #44447a;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                    margin-bottom: 6px;
+                }
                 .app-name {
-                    font-size: 0.95rem;
-                    font-weight: 600;
-                    color: #333;
+                    font-size: 0.42rem;
+                    color: #c7c7ff;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
                 }
                 .app-title {
-                    font-size: 0.78rem;
-                    color: #999;
+                    font-size: 0.32rem;
+                    color: #44447a;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
-                    margin-top: 2px;
+                    margin-top: 4px;
                 }
-
-                /* app stats table */
-                .apps-card {
-                    background: white;
-                    border-radius: 20px;
-                    padding: 32px 36px;
-                    box-shadow: 0 4px 32px rgba(0,0,0,0.07);
+                .apps-panel {
+                    background: #13132a;
+                    border: 3px solid #1e1e4a;
+                    box-shadow: 4px 4px 0 #1e1e4a;
+                    padding: 24px;
                     flex: 1;
                     min-width: 0;
                 }
-                .apps-card h2 {
-                    font-size: 0.75rem;
-                    color: #aaa;
-                    letter-spacing: 0.08em;
+                .apps-panel h2 {
+                    font-size: 0.4rem;
+                    color: #4f46e5;
+                    letter-spacing: 0.1em;
                     text-transform: uppercase;
                     margin-bottom: 20px;
                 }
-                .app-row {
-                    margin-bottom: 14px;
-                }
+                .app-row { margin-bottom: 14px; }
                 .app-row-header {
                     display: flex;
                     justify-content: space-between;
                     align-items: baseline;
-                    margin-bottom: 4px;
+                    margin-bottom: 5px;
                 }
                 .app-row-name {
-                    font-size: 0.9rem;
-                    font-weight: 500;
-                    color: #333;
+                    font-size: 0.38rem;
+                    color: #a5a5cc;
                     white-space: nowrap;
                     overflow: hidden;
                     text-overflow: ellipsis;
-                    max-width: 70%;
+                    max-width: 65%;
                 }
                 .app-row-time {
-                    font-size: 0.82rem;
-                    color: #888;
-                    font-variant-numeric: tabular-nums;
+                    font-size: 0.35rem;
+                    color: #44447a;
                     white-space: nowrap;
                     flex-shrink: 0;
                 }
                 .bar-bg {
-                    height: 6px;
-                    background: #f0f0f0;
-                    border-radius: 3px;
-                    overflow: hidden;
+                    height: 5px;
+                    background: #0d0d1a;
+                    border: 1px solid #1e1e4a;
                 }
                 .bar-fill {
                     height: 100%;
                     background: #4f46e5;
-                    border-radius: 3px;
-                    transition: width 0.4s ease;
+                    transition: width 0.4s;
                 }
                 .empty-msg {
-                    color: #ccc;
-                    font-size: 0.9rem;
+                    font-size: 0.4rem;
+                    color: #333366;
                     text-align: center;
-                    padding: 20px 0;
+                    padding: 24px 0;
                 }
             </style>
         </head>
         <body>
-            <div class="layout">
-                <div class="card">
-                    <div class="section-label">Кликов мышкой</div>
-                    <div class="count" id="count">—</div>
-                    <div class="stats">
-                        <div class="stat active">
-                            <div class="stat-label">Активность</div>
-                            <div class="stat-value" id="active">—</div>
-                        </div>
-                        <div class="stat inactive">
-                            <div class="stat-label">Неактивность</div>
-                            <div class="stat-value" id="inactive">—</div>
-                        </div>
+        <div class="layout">
+            <div class="panel">
+                <div class="panel-title">Mouse Tracker</div>
+                <canvas id="cv"></canvas>
+                <div class="count" id="count">—</div>
+                <div class="count-sub">кликов</div>
+                <div class="stats">
+                    <div class="stat active">
+                        <div class="stat-label">Активно</div>
+                        <div class="stat-value" id="active">—</div>
                     </div>
-                    <div class="app-block">
-                        <div class="stat-label" style="font-size:.7rem;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Сейчас</div>
-                        <div class="app-name" id="app-name">—</div>
-                        <div class="app-title" id="app-title"></div>
+                    <div class="stat inactive">
+                        <div class="stat-label">Неактивно</div>
+                        <div class="stat-value" id="inactive">—</div>
                     </div>
                 </div>
-
-                <div class="apps-card">
-                    <h2>Время в приложениях</h2>
-                    <div id="app-list"><div class="empty-msg">Нет данных</div></div>
+                <div class="app-block">
+                    <div class="app-label">Сейчас</div>
+                    <div class="app-name" id="app-name">—</div>
+                    <div class="app-title" id="app-title"></div>
                 </div>
             </div>
+            <div class="apps-panel">
+                <h2>Время в приложениях</h2>
+                <div id="app-list"><div class="empty-msg">Нет данных</div></div>
+            </div>
+        </div>
+        <script>
+            // --- 8-bit pixel character ---
+            const S = 8;
+            const cv = document.getElementById('cv');
+            cv.width  = 12 * S;
+            cv.height = 16 * S;
+            const cx = cv.getContext('2d');
+            cx.imageSmoothingEnabled = false;
 
-            <script>
-                let prevCount = null;
-                const elCount    = document.getElementById('count');
-                const elActive   = document.getElementById('active');
-                const elInactive = document.getElementById('inactive');
-                const elAppName  = document.getElementById('app-name');
-                const elAppTitle = document.getElementById('app-title');
-                const elAppList  = document.getElementById('app-list');
+            const _ = null;
+            const K = '#FDB97D'; // skin
+            const H = '#3D1F08'; // hair
+            const B = '#2B4BCC'; // shirt
+            const P = '#15297A'; // pants
+            const O = '#111111'; // shoe
+            const E = '#220800'; // eyes/mouth
 
-                function fmt(s) {
-                    const h = Math.floor(s / 3600);
-                    const m = Math.floor((s % 3600) / 60);
-                    const sec = s % 60;
-                    if (h > 0) return `${h}ч ${String(m).padStart(2,'0')}м ${String(sec).padStart(2,'0')}с`;
-                    if (m > 0) return `${m}м ${String(sec).padStart(2,'0')}с`;
-                    return `${sec}с`;
-                }
+            // idle: arms out to both sides
+            const idle = [
+                [_,_,_,H,H,H,H,H,_,_,_,_],
+                [_,_,H,H,H,H,H,H,H,_,_,_],
+                [_,H,H,K,K,K,K,K,K,H,_,_],
+                [_,_,K,K,E,K,K,E,K,K,_,_],
+                [_,_,K,K,K,K,K,K,K,K,_,_],
+                [_,_,K,K,K,E,E,K,K,K,_,_],
+                [_,_,K,K,K,K,K,K,K,K,_,_],
+                [B,B,B,B,B,B,B,B,B,B,B,B],
+                [B,B,B,B,B,B,B,B,B,B,B,B],
+                [_,B,B,B,B,B,B,B,B,B,B,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,O,O,O,O,_,_,O,O,O,O,_],
+                [O,O,O,O,_,_,_,_,O,O,O,O],
+            ];
 
-                function renderApps(apps) {
-                    if (!apps || apps.length === 0) {
-                        elAppList.innerHTML = '<div class="empty-msg">Нет данных</div>';
-                        return;
+            // click: right arm raised up
+            const cf = [
+                [_,_,_,H,H,H,H,H,_,B,B,_],
+                [_,_,H,H,H,H,H,H,H,B,_,_],
+                [_,H,H,K,K,K,K,K,K,B,_,_],
+                [_,_,K,K,E,K,K,E,K,B,_,_],
+                [_,_,K,K,K,K,K,K,K,B,_,_],
+                [_,_,K,K,K,E,E,K,K,B,_,_],
+                [_,_,K,K,K,K,K,K,K,B,_,_],
+                [B,B,B,B,B,B,B,B,B,B,_,_],
+                [B,B,B,B,B,B,B,B,B,B,_,_],
+                [_,B,B,B,B,B,B,B,B,B,_,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,_,P,P,P,_,_,P,P,P,_,_],
+                [_,O,O,O,O,_,_,O,O,O,O,_],
+                [O,O,O,O,_,_,_,_,O,O,O,O],
+            ];
+
+            function drawFrame(frame) {
+                cx.clearRect(0, 0, cv.width, cv.height);
+                for (let y = 0; y < frame.length; y++) {
+                    for (let x = 0; x < frame[y].length; x++) {
+                        if (!frame[y][x]) continue;
+                        cx.fillStyle = frame[y][x];
+                        cx.fillRect(x * S, y * S, S, S);
                     }
-                    const max = apps[0].seconds;
-                    elAppList.innerHTML = apps.map(a => {
-                        const pct = max > 0 ? (a.seconds / max * 100).toFixed(1) : 0;
-                        return `
-                            <div class="app-row">
-                                <div class="app-row-header">
-                                    <div class="app-row-name">${a.name}</div>
-                                    <div class="app-row-time">${fmt(a.seconds)}</div>
-                                </div>
-                                <div class="bar-bg">
-                                    <div class="bar-fill" style="width:${pct}%"></div>
-                                </div>
-                            </div>`;
-                    }).join('');
                 }
+            }
 
-                async function update() {
-                    try {
-                        const r = await fetch('/api/stats');
-                        const d = await r.json();
+            drawFrame(idle);
 
-                        elCount.textContent    = d.count.toLocaleString('ru');
-                        elActive.textContent   = fmt(d.active_seconds);
-                        elInactive.textContent = fmt(d.inactive_seconds);
-                        elAppName.textContent  = d.app_process || '—';
-                        elAppTitle.textContent = d.app_title || '';
+            function triggerClick() {
+                drawFrame(cf);
+                setTimeout(() => drawFrame(idle), 130);
+            }
 
-                        if (prevCount !== null && d.count !== prevCount) {
-                            elCount.classList.add('flash');
-                            setTimeout(() => elCount.classList.remove('flash'), 150);
-                        }
-                        prevCount = d.count;
+            // --- Stats ---
+            let prevCount = null;
+            const elCount    = document.getElementById('count');
+            const elActive   = document.getElementById('active');
+            const elInactive = document.getElementById('inactive');
+            const elAppName  = document.getElementById('app-name');
+            const elAppTitle = document.getElementById('app-title');
+            const elAppList  = document.getElementById('app-list');
 
-                        renderApps(d.app_stats);
-                    } catch {}
+            function fmt(s) {
+                const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+                if (h > 0) return h + 'ч ' + String(m).padStart(2,'0') + 'м';
+                if (m > 0) return m + 'м ' + String(sec).padStart(2,'0') + 'с';
+                return sec + 'с';
+            }
+
+            function esc(s) {
+                return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            }
+
+            function renderApps(apps) {
+                if (!apps || apps.length === 0) {
+                    elAppList.innerHTML = '<div class="empty-msg">Нет данных</div>';
+                    return;
                 }
+                const max = apps[0].seconds;
+                elAppList.innerHTML = apps.map(a => {
+                    const pct = max > 0 ? (a.seconds / max * 100).toFixed(1) : 0;
+                    return '<div class="app-row">' +
+                        '<div class="app-row-header">' +
+                        '<div class="app-row-name">' + esc(a.name) + '</div>' +
+                        '<div class="app-row-time">' + fmt(a.seconds) + '</div>' +
+                        '</div><div class="bar-bg"><div class="bar-fill" style="width:' + pct + '%"></div></div></div>';
+                }).join('');
+            }
 
-                update();
-                setInterval(update, 1000);
-            </script>
+            async function update() {
+                try {
+                    const r = await fetch('/api/stats');
+                    const d = await r.json();
+                    elCount.textContent    = d.count.toLocaleString('ru');
+                    elActive.textContent   = fmt(d.active_seconds);
+                    elInactive.textContent = fmt(d.inactive_seconds);
+                    elAppName.textContent  = d.app_process || '—';
+                    elAppTitle.textContent = d.app_title || '';
+                    if (prevCount !== null && d.count !== prevCount) {
+                        elCount.classList.add('flash');
+                        setTimeout(() => elCount.classList.remove('flash'), 130);
+                        triggerClick();
+                    }
+                    prevCount = d.count;
+                    renderApps(d.app_stats);
+                } catch(e) {}
+            }
+
+            update();
+            setInterval(update, 1000);
+        </script>
         </body>
         </html>
         """;

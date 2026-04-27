@@ -6,6 +6,7 @@ public record AppStat(string ProcessName, long Seconds);
 
 public record MachineSnapshot(
     string MachineId,
+    string UserName,
     DateTime LastSeen,
     long TotalClicks,
     long ActiveSeconds,
@@ -33,6 +34,7 @@ public sealed class ServerDb : IDisposable
 
             CREATE TABLE IF NOT EXISTS machines (
                 machine_id        TEXT PRIMARY KEY,
+                user_name         TEXT NOT NULL DEFAULT '',
                 last_seen         TEXT NOT NULL,
                 total_clicks      INTEGER NOT NULL DEFAULT 0,
                 active_seconds    INTEGER NOT NULL DEFAULT 0,
@@ -47,6 +49,19 @@ public sealed class ServerDb : IDisposable
             );
             """;
         cmd.ExecuteNonQuery();
+
+        Migrate();
+    }
+
+    private void Migrate()
+    {
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "ALTER TABLE machines ADD COLUMN user_name TEXT NOT NULL DEFAULT ''";
+            cmd.ExecuteNonQuery();
+        }
+        catch (SqliteException) { /* колонка уже есть */ }
     }
 
     public void Upsert(SyncPayload payload)
@@ -58,15 +73,17 @@ public sealed class ServerDb : IDisposable
             var m = _conn.CreateCommand();
             m.Transaction = tx;
             m.CommandText = """
-                INSERT INTO machines (machine_id, last_seen, total_clicks, active_seconds, inactive_seconds)
-                VALUES ($id, $ts, $clicks, $active, $inactive)
+                INSERT INTO machines (machine_id, user_name, last_seen, total_clicks, active_seconds, inactive_seconds)
+                VALUES ($id, $userName, $ts, $clicks, $active, $inactive)
                 ON CONFLICT(machine_id) DO UPDATE SET
+                    user_name        = $userName,
                     last_seen        = $ts,
                     total_clicks     = $clicks,
                     active_seconds   = $active,
                     inactive_seconds = $inactive
                 """;
             m.Parameters.AddWithValue("$id",       payload.MachineId);
+            m.Parameters.AddWithValue("$userName", payload.UserName ?? "");
             m.Parameters.AddWithValue("$ts",       DateTime.UtcNow.ToString("o"));
             m.Parameters.AddWithValue("$clicks",   payload.TotalClicks);
             m.Parameters.AddWithValue("$active",   payload.ActiveSeconds);
@@ -105,15 +122,16 @@ public sealed class ServerDb : IDisposable
             var machines = new List<MachineSnapshot>();
 
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "SELECT machine_id, last_seen, total_clicks, active_seconds, inactive_seconds FROM machines ORDER BY last_seen DESC";
+            cmd.CommandText = "SELECT machine_id, user_name, last_seen, total_clicks, active_seconds, inactive_seconds FROM machines ORDER BY last_seen DESC";
             using var r = cmd.ExecuteReader();
 
             while (r.Read())
             {
                 var id = r.GetString(0);
-                var lastSeen = DateTime.Parse(r.GetString(1)).ToUniversalTime();
+                var userName = r.GetString(1);
+                var lastSeen = DateTime.Parse(r.GetString(2)).ToUniversalTime();
                 var apps = GetAppStats(id);
-                machines.Add(new MachineSnapshot(id, lastSeen, r.GetInt64(2), r.GetInt64(3), r.GetInt64(4), apps));
+                machines.Add(new MachineSnapshot(id, userName, lastSeen, r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), apps));
             }
 
             return machines;

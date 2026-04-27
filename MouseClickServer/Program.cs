@@ -18,6 +18,7 @@ app.MapPost("/api/sync", async (HttpContext ctx) =>
 app.MapGet("/api/machines", () => db.GetAll().Select(m => new
 {
     machineId       = m.MachineId,
+    userName        = m.UserName,
     lastSeen        = m.LastSeen,
     totalClicks     = m.TotalClicks,
     activeSeconds   = m.ActiveSeconds,
@@ -35,6 +36,7 @@ namespace MouseClickServer
 
     public record SyncPayload(
         string MachineId,
+        string? UserName,
         long TotalClicks,
         long ActiveSeconds,
         long InactiveSeconds,
@@ -71,7 +73,9 @@ namespace MouseClickServer
                     .status-online  { background: #16a34a; }
                     .status-away    { background: #d97706; }
                     .status-offline { background: #dc2626; }
+                    .machine-name-block { overflow: hidden; min-width: 0; }
                     .machine-name { font-size: 1rem; font-weight: 600; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                    .machine-id   { font-size: 0.7rem; color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
                     .last-seen { font-size: 0.75rem; color: #bbb; margin-left: auto; flex-shrink: 0; }
 
                     .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px; }
@@ -124,22 +128,30 @@ namespace MouseClickServer
                         if (age < 3600) return `${Math.floor(age/60)}м назад`;
                         return `${Math.floor(age/3600)}ч назад`;
                     }
+                    function esc(s) {
+                        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    }
                     function renderCard(m) {
                         const top = m.appStats.slice(0, 5);
                         const maxSec = top[0]?.seconds || 1;
                         const bars = top.map(a => `
                             <div class="app-row">
                                 <div class="app-row-header">
-                                    <div class="app-row-name">${a.processName}</div>
+                                    <div class="app-row-name">${esc(a.processName)}</div>
                                     <div class="app-row-time">${fmt(a.seconds)}</div>
                                 </div>
                                 <div class="bar-bg"><div class="bar-fill" style="width:${(a.seconds/maxSec*100).toFixed(1)}%"></div></div>
                             </div>`).join('');
+                        const displayName = m.userName ? esc(m.userName) : esc(m.machineId);
+                        const subtitle    = m.userName ? `<div class="machine-id">${esc(m.machineId)}</div>` : '';
                         return `
                             <div class="machine-card">
                                 <div class="machine-header">
                                     <div class="status-dot ${statusClass(m.lastSeen)}"></div>
-                                    <div class="machine-name">${m.machineId}</div>
+                                    <div class="machine-name-block">
+                                        <div class="machine-name">${displayName}</div>
+                                        ${subtitle}
+                                    </div>
                                     <div class="last-seen">${relTime(m.lastSeen)}</div>
                                 </div>
                                 <div class="metrics">

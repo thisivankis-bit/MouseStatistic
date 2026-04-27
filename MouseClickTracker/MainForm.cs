@@ -6,7 +6,7 @@ public class MainForm : Form
     private readonly DataStore _store = new();
     private readonly WebServer _web;
     private readonly ActivityTracker _activity;
-    private readonly SyncService? _sync;
+    private SyncService? _sync;
     private int _clickCount;
 
     private readonly Label _labelTitle = new()
@@ -32,6 +32,16 @@ public class MainForm : Form
         Font = new Font("Segoe UI", 10)
     };
 
+    private readonly Button _btnSettings = new()
+    {
+        Text = "Настройки",
+        Location = new Point(90, 185),
+        Size = new Size(110, 28),
+        Font = new Font("Segoe UI", 9),
+        FlatStyle = FlatStyle.Flat,
+        ForeColor = Color.Gray
+    };
+
     public MainForm()
     {
         _activity = new ActivityTracker(_store);
@@ -39,10 +49,10 @@ public class MainForm : Form
 
         var cfg = AppConfig.Load();
         if (!string.IsNullOrWhiteSpace(cfg.ServerUrl))
-            _sync = new SyncService(_store, _activity, cfg.ServerUrl, cfg.ResolvedMachineId);
+            _sync = new SyncService(_store, _activity, cfg.ServerUrl, cfg.ResolvedMachineId, cfg.UserName);
 
         Text = "Mouse Click Tracker";
-        Size = new Size(300, 230);
+        Size = new Size(300, 270);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -57,7 +67,23 @@ public class MainForm : Form
             _labelCount.Text = "0";
         };
 
-        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _btnReset });
+        _btnSettings.Click += (_, _) =>
+        {
+            var current = AppConfig.Load();
+            using var dlg = new SettingsForm(current.ServerUrl, current.UserName);
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            current.ServerUrl = dlg.ServerUrl;
+            current.UserName  = dlg.UserName;
+            current.Save();
+
+            _sync?.Dispose();
+            _sync = string.IsNullOrWhiteSpace(current.ServerUrl)
+                ? null
+                : new SyncService(_store, _activity, current.ServerUrl, current.ResolvedMachineId, current.UserName);
+        };
+
+        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _btnReset, _btnSettings });
 
         _hook.Clicked += OnClicked;
         _hook.Activity += (_, _) => _activity.RegisterActivity();
