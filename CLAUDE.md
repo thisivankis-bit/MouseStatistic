@@ -27,7 +27,8 @@ dotnet build MouseClickServer
 # Publish client (self-contained installer input)
 dotnet publish MouseClickTracker -r win-x64 --self-contained true -c Release -o MouseClickTracker/publish
 
-# Publish server (self-contained installer input)
+# Publish server — always delete publish/ first to avoid nested-folder bug
+Remove-Item -Recurse -Force MouseClickServer/publish -ErrorAction SilentlyContinue
 dotnet publish MouseClickServer -r win-x64 --self-contained true -c Release -o MouseClickServer/publish
 
 # Compile installers (requires Inno Setup at default path)
@@ -57,7 +58,7 @@ DataStore (SQLite via Microsoft.Data.Sqlite)
               app_stats(process_name, seconds)
 
 WebServer (HttpListener on :5000)
-  ├── GET /          — embedded HTML dashboard (retro pixel art, updates every 1s)
+  ├── GET /          — embedded HTML dashboard (updates every 1s)
   └── GET /api/stats — JSON snapshot from DataStore + ActivityTracker
 
 SyncService (optional, 1-minute timer) — only created when ServerUrl is set
@@ -79,9 +80,9 @@ ResetTimer (30-second timer, always active)
   "UserName": "Иван"
 }
 ```
-`MachineId` defaults to `Environment.MachineName` if empty. `UserName` is displayed on the server dashboard. Work hours and reset time are **not** stored locally — they come from the server via `/api/config`.
+`MachineId` defaults to `Environment.MachineName` if empty. Work hours and reset time are **not** stored locally — they come from the server via `/api/config`.
 
-**Schedule (server-driven)**: `_workStart`, `_workEnd`, `_resetTime` are in-memory fields in `MainForm`, set by the `SyncService` callback. `_labelSchedule` in the form shows the current received schedule (blue = active, gray = not configured).
+**Schedule (server-driven)**: `_workStart`, `_workEnd`, `_resetTime` are in-memory fields in `MainForm`, set by the `SyncService` callback. `_labelSchedule` shows the current received schedule (blue = active, gray = not configured).
 
 **Reset behaviour**: `DataStore.Reset()` zeroes `total`, `active_seconds`, `inactive_seconds`, and deletes all `app_stats` rows. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together everywhere.
 
@@ -90,33 +91,43 @@ ResetTimer (30-second timer, always active)
 Minimal ASP.NET Core API that runs as a Windows Service.
 
 ```
-POST /api/sync    — upserts machine snapshot (clicks, activity, app_stats, user_name)
+POST /api/sync     — upserts machine snapshot; accumulates daily delta in machine_daily
 GET  /api/machines — all machine snapshots ordered by last_seen DESC
-GET  /api/config  — returns work_start, work_end, reset_time from settings table
-POST /api/config  — saves work_start, work_end, reset_time to settings table
-GET  /            — embedded HTML dashboard (3 tabs, 30s poll)
+GET  /api/config   — returns work_start, work_end, reset_time from settings table
+POST /api/config   — saves work_start, work_end, reset_time to settings table
+GET  /api/stats    — period statistics: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+GET  /             — embedded HTML dashboard (4 tabs, 30s poll)
 ```
 
 **Database**: `%ProgramData%\MouseClickServer\server.db`
 ```
-machines(machine_id PK, user_name, last_seen, total_clicks, active_seconds, inactive_seconds)
+machines(machine_id PK, user_name, last_seen, total_clicks, active_seconds, inactive_seconds, recent_clicks)
 machine_app_stats(machine_id, process_name, seconds — composite PK)
+machine_daily(machine_id, day YYYY-MM-DD, clicks, active_sec, inactive_sec — composite PK)
 settings(key PK, value)   ← stores work_start / work_end / reset_time
 ```
 
-Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in one transaction). Both `ServerDb` and `DataStore` run a `Migrate()` on startup to `ALTER TABLE ADD COLUMN` for backward compatibility with older databases.
+**`recent_clicks`**: filled on every sync with the delta since the previous sync (`new - prev`, or `new` if a reset occurred). Used by the dashboard office tab to decide whether to show a character as dancing (clicking) vs sleeping (idle).
 
-**Online status** (dashboard only, not in DB): `last_seen < 90s` = online, `< 600s` = away, else offline.
+**Daily history**: on each sync, `Upsert()` reads the previous snapshot, computes click/time deltas, and upserts into `machine_daily` (local server date). Handles counter resets: if `new < prev`, the full new value is the delta.
+
+Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in one transaction). Both `ServerDb` and `DataStore` run a `Migrate()` on startup to `ALTER TABLE ADD COLUMN` for backward compatibility with older databases.
 
 ## Dashboard (server-side, `Program.cs → Dashboard.Html`)
 
-Three tabs rendered as a single `const string` HTML page:
+Four tabs rendered as a single `const string` HTML page:
 
-- **Статистика** — card grid per machine with clicks, active/inactive time, top-5 apps
-- **Офис** — isometric office scene on one `<canvas id="office-cv" width="960" height="420">`, animated via `requestAnimationFrame`
+- **Статистика** — card grid per machine: clicks, active/inactive time, top-5 apps, status dot
+- **Офис** — animated character canvas (`<canvas id="office-cv">`), one character per connected client, RAF loop
+- **Отчёты** — period statistics: date-range picker with quick buttons, summary cards, per-client table with inline bars
 - **Расписание** — `<input type="time">` fields for work hours and auto-reset, saved via `POST /api/config`
 
-**Isometric rendering** (`drawBox`, `drawIsoTile`, `drawIsoDesk`, `drawOffice`): pure canvas paths, no pixel arrays. Painter's algorithm: desks sorted by `col + row` ascending. Online workers bob with `Math.sin`. Offline workers slump with "z z" text. Name labels drawn below each desk tile.
+**Office character states** (function `getActivityStatus(m)`, separate from `getStatus()`):
+- **Танцует** (dancing) — `recentClicks > 0` AND `lastSeen < 150s`
+- **Спит** (sleeping) — connected but no recent clicks (`lastSeen < 600s`)
+- **Призрак** (ghost) — `lastSeen ≥ 600s`
+
+`getStatus()` (used for stats tab dots) uses only `lastSeen`: online < 90s, away < 600s, offline otherwise.
 
 ## Installer Scripts
 
@@ -133,3 +144,4 @@ Both installers are Inno Setup 6 scripts in `<project>/installer/setup.iss`. Out
 - **Batched SQLite writes** — `ActivityTracker` accumulates pending counters in memory and flushes every 10 ticks. Call `Flush()` before reading totals after a forced stop.
 - **WinAPI hook lifetime** — `MouseHook` holds a delegate reference (`_proc`) as a field to prevent GC collection while the hook is active.
 - **`SettingsForm`** — runtime dialog for editing `ServerUrl` and `UserName`. On save, disposes and recreates `SyncService` without restarting the app.
+- **Server publish gotcha** — `dotnet publish` into an existing `publish/` folder that already contains a `publish/` subfolder creates a nested structure and fails on second run. Always delete `MouseClickServer/publish/` before publishing.
