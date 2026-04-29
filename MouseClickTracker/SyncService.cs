@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MouseClickTracker;
 
@@ -9,18 +10,26 @@ public sealed class SyncService : IDisposable
     private readonly ActivityTracker _activity;
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly string _endpoint;
+    private readonly string _configEndpoint;
     private readonly string _machineId;
     private readonly string _userName;
+    private readonly Action<string, string, string>? _onConfig;
     private readonly System.Threading.Timer _timer;
 
-    public SyncService(DataStore store, ActivityTracker activity, string serverUrl, string machineId, string userName)
+    private static readonly JsonSerializerOptions _jsonOpts =
+        new() { PropertyNameCaseInsensitive = true };
+
+    public SyncService(DataStore store, ActivityTracker activity,
+                       string serverUrl, string machineId, string userName,
+                       Action<string, string, string>? onConfig = null)
     {
-        _store    = store;
-        _activity = activity;
-        _endpoint = serverUrl.TrimEnd('/') + "/api/sync";
-        _machineId = machineId;
-        _userName = userName;
-        // первый синк сразу при старте, потом каждую минуту
+        _store          = store;
+        _activity       = activity;
+        _endpoint       = serverUrl.TrimEnd('/') + "/api/sync";
+        _configEndpoint = serverUrl.TrimEnd('/') + "/api/config";
+        _machineId      = machineId;
+        _userName       = userName;
+        _onConfig       = onConfig;
         _timer = new System.Threading.Timer(Sync, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
     }
 
@@ -42,7 +51,20 @@ public sealed class SyncService : IDisposable
             var json = JsonSerializer.Serialize(payload);
             await _http.PostAsync(_endpoint, new StringContent(json, Encoding.UTF8, "application/json"));
         }
-        catch { /* сеть недоступна — попробуем на следующем тике */ }
+        catch { }
+
+        // Получаем расписание с сервера
+        if (_onConfig is null) return;
+        try
+        {
+            var resp = await _http.GetAsync(_configEndpoint);
+            if (!resp.IsSuccessStatusCode) return;
+            var cfg = await JsonSerializer.DeserializeAsync<ServerSchedule>(
+                await resp.Content.ReadAsStreamAsync(), _jsonOpts);
+            if (cfg is not null)
+                _onConfig(cfg.WorkStart ?? "", cfg.WorkEnd ?? "", cfg.ResetTime ?? "");
+        }
+        catch { }
     }
 
     public void Dispose()
@@ -50,4 +72,9 @@ public sealed class SyncService : IDisposable
         _timer.Dispose();
         _http.Dispose();
     }
+
+    private record ServerSchedule(
+        [property: JsonPropertyName("workStart")] string? WorkStart,
+        [property: JsonPropertyName("workEnd")]   string? WorkEnd,
+        [property: JsonPropertyName("resetTime")] string? ResetTime);
 }

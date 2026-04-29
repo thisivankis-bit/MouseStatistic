@@ -7,6 +7,11 @@ public class MainForm : Form
     private readonly WebServer _web;
     private readonly ActivityTracker _activity;
     private SyncService? _sync;
+    private System.Threading.Timer? _resetTimer;
+    private string _workStart = "";
+    private string _workEnd   = "";
+    private string _resetTime = "";
+    private DateTime _lastReset = DateTime.MinValue;
     private int _clickCount;
 
     private readonly Label _labelTitle = new()
@@ -42,6 +47,14 @@ public class MainForm : Form
         ForeColor = Color.Gray
     };
 
+    private readonly Label _labelSchedule = new()
+    {
+        Font      = new Font("Segoe UI", 7.5f),
+        ForeColor = Color.Gray,
+        AutoSize  = true,
+        Location  = new Point(12, 222)
+    };
+
     public MainForm()
     {
         _activity = new ActivityTracker(_store);
@@ -49,7 +62,9 @@ public class MainForm : Form
 
         var cfg = AppConfig.Load();
         if (!string.IsNullOrWhiteSpace(cfg.ServerUrl))
-            _sync = new SyncService(_store, _activity, cfg.ServerUrl, cfg.ResolvedMachineId, cfg.UserName);
+            _sync = new SyncService(_store, _activity, cfg.ServerUrl, cfg.ResolvedMachineId, cfg.UserName,
+                OnConfigReceived);
+        _resetTimer = new System.Threading.Timer(CheckReset, null, 0, 30_000);
 
         Text = "Mouse Click Tracker";
         Size = new Size(300, 270);
@@ -63,6 +78,7 @@ public class MainForm : Form
         _btnReset.Click += (_, _) =>
         {
             _store.Reset();
+            _activity.Reset();
             _clickCount = 0;
             _labelCount.Text = "0";
         };
@@ -80,10 +96,12 @@ public class MainForm : Form
             _sync?.Dispose();
             _sync = string.IsNullOrWhiteSpace(current.ServerUrl)
                 ? null
-                : new SyncService(_store, _activity, current.ServerUrl, current.ResolvedMachineId, current.UserName);
+                : new SyncService(_store, _activity, current.ServerUrl, current.ResolvedMachineId, current.UserName,
+                    OnConfigReceived);
         };
 
-        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _btnReset, _btnSettings });
+        UpdateScheduleLabel();
+        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _btnReset, _btnSettings, _labelSchedule });
 
         _hook.Clicked += OnClicked;
         _hook.Activity += (_, _) => _activity.RegisterActivity();
@@ -91,16 +109,64 @@ public class MainForm : Form
         _web.Start();
     }
 
+    private void OnConfigReceived(string start, string end, string reset)
+    {
+        _workStart = start;
+        _workEnd   = end;
+        _resetTime = reset;
+        if (IsHandleCreated)
+            BeginInvoke(UpdateScheduleLabel);
+    }
+
+    private void UpdateScheduleLabel()
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_workStart) && !string.IsNullOrWhiteSpace(_workEnd))
+            parts.Add($"Учёт: {_workStart}–{_workEnd}");
+        if (!string.IsNullOrWhiteSpace(_resetTime))
+            parts.Add($"Сброс: {_resetTime}");
+
+        _labelSchedule.Text      = parts.Count > 0 ? string.Join("  ", parts) : "Расписание: не настроено";
+        _labelSchedule.ForeColor = parts.Count > 0 ? Color.SteelBlue : Color.Gray;
+    }
+
     private void OnClicked(object? sender, EventArgs e)
     {
+        if (!IsInWorkHours(_workStart, _workEnd)) return;
         _store.Increment();
         _clickCount++;
         Invoke(() => _labelCount.Text = _clickCount.ToString());
     }
 
+    private void CheckReset(object? state)
+    {
+        if (string.IsNullOrWhiteSpace(_resetTime)) return;
+        if (!TimeOnly.TryParse(_resetTime, out var rt)) return;
+        var now = DateTime.Now;
+        if (now - _lastReset < TimeSpan.FromMinutes(1)) return;
+        var t = TimeOnly.FromDateTime(now);
+        if (t.Hour != rt.Hour || t.Minute != rt.Minute) return;
+
+        _lastReset = now;
+        _store.Reset();
+        _activity.Reset();
+        _clickCount = 0;
+        if (IsHandleCreated)
+            BeginInvoke(() => _labelCount.Text = "0");
+    }
+
+    private static bool IsInWorkHours(string workStart, string workEnd)
+    {
+        if (string.IsNullOrWhiteSpace(workStart) || string.IsNullOrWhiteSpace(workEnd)) return true;
+        if (!TimeOnly.TryParse(workStart, out var start) || !TimeOnly.TryParse(workEnd, out var end)) return true;
+        var now = TimeOnly.FromDateTime(DateTime.Now);
+        return start <= end ? now >= start && now <= end : now >= start || now <= end;
+    }
+
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         _hook.Dispose();
+        _resetTimer?.Dispose();
         _sync?.Dispose();
         _activity.Dispose();
         _web.Dispose();

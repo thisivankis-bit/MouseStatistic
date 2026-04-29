@@ -138,7 +138,10 @@ public sealed class DataStore : IDisposable
         lock (_lock)
         {
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "UPDATE counter SET total = 0";
+            cmd.CommandText = """
+                UPDATE counter SET total = 0, active_seconds = 0, inactive_seconds = 0;
+                DELETE FROM app_stats;
+                """;
             cmd.ExecuteNonQuery();
         }
     }

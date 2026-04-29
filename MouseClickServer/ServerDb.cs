@@ -11,7 +11,18 @@ public record MachineSnapshot(
     long TotalClicks,
     long ActiveSeconds,
     long InactiveSeconds,
+    long RecentClicks,
     List<AppStat> AppStats);
+
+public record DailyEntry(string Day, long Clicks, long ActiveSec, long InactiveSec);
+
+public record PeriodMachineStat(
+    string MachineId,
+    string UserName,
+    long TotalClicks,
+    long TotalActiveSec,
+    long TotalInactiveSec,
+    List<DailyEntry> Days);
 
 public sealed class ServerDb : IDisposable
 {
@@ -32,13 +43,19 @@ public sealed class ServerDb : IDisposable
         cmd.CommandText = """
             PRAGMA journal_mode=WAL;
 
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT ''
+            );
+
             CREATE TABLE IF NOT EXISTS machines (
                 machine_id        TEXT PRIMARY KEY,
                 user_name         TEXT NOT NULL DEFAULT '',
                 last_seen         TEXT NOT NULL,
                 total_clicks      INTEGER NOT NULL DEFAULT 0,
                 active_seconds    INTEGER NOT NULL DEFAULT 0,
-                inactive_seconds  INTEGER NOT NULL DEFAULT 0
+                inactive_seconds  INTEGER NOT NULL DEFAULT 0,
+                recent_clicks     INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS machine_app_stats (
@@ -46,6 +63,16 @@ public sealed class ServerDb : IDisposable
                 process_name  TEXT NOT NULL,
                 seconds       INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (machine_id, process_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS machine_daily (
+                machine_id   TEXT NOT NULL,
+                user_name    TEXT NOT NULL DEFAULT '',
+                day          TEXT NOT NULL,
+                clicks       INTEGER NOT NULL DEFAULT 0,
+                active_sec   INTEGER NOT NULL DEFAULT 0,
+                inactive_sec INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (machine_id, day)
             );
             """;
         cmd.ExecuteNonQuery();
@@ -55,13 +82,15 @@ public sealed class ServerDb : IDisposable
 
     private void Migrate()
     {
-        try
+        foreach (var ddl in new[]
         {
-            using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "ALTER TABLE machines ADD COLUMN user_name TEXT NOT NULL DEFAULT ''";
-            cmd.ExecuteNonQuery();
+            "ALTER TABLE machines ADD COLUMN user_name     TEXT    NOT NULL DEFAULT ''",
+            "ALTER TABLE machines ADD COLUMN recent_clicks INTEGER NOT NULL DEFAULT 0",
+        })
+        {
+            try { using var c = _conn.CreateCommand(); c.CommandText = ddl; c.ExecuteNonQuery(); }
+            catch (SqliteException) { }
         }
-        catch (SqliteException) { /* колонка уже есть */ }
     }
 
     public void Upsert(SyncPayload payload)
@@ -70,17 +99,34 @@ public sealed class ServerDb : IDisposable
         {
             using var tx = _conn.BeginTransaction();
 
+            // Read previous snapshot to compute deltas for daily history
+            long prevClicks = 0, prevActive = 0, prevInactive = 0;
+            using (var q = _conn.CreateCommand())
+            {
+                q.Transaction = tx;
+                q.CommandText = "SELECT total_clicks, active_seconds, inactive_seconds FROM machines WHERE machine_id = $id";
+                q.Parameters.AddWithValue("$id", payload.MachineId);
+                using var qr = q.ExecuteReader();
+                if (qr.Read()) { prevClicks = qr.GetInt64(0); prevActive = qr.GetInt64(1); prevInactive = qr.GetInt64(2); }
+            }
+
+            // If new value < prev the counter was reset; treat new value as the delta
+            long dClicks   = payload.TotalClicks    >= prevClicks   ? payload.TotalClicks    - prevClicks   : payload.TotalClicks;
+            long dActive   = payload.ActiveSeconds   >= prevActive   ? payload.ActiveSeconds   - prevActive   : payload.ActiveSeconds;
+            long dInactive = payload.InactiveSeconds >= prevInactive ? payload.InactiveSeconds - prevInactive : payload.InactiveSeconds;
+
             var m = _conn.CreateCommand();
             m.Transaction = tx;
             m.CommandText = """
-                INSERT INTO machines (machine_id, user_name, last_seen, total_clicks, active_seconds, inactive_seconds)
-                VALUES ($id, $userName, $ts, $clicks, $active, $inactive)
+                INSERT INTO machines (machine_id, user_name, last_seen, total_clicks, active_seconds, inactive_seconds, recent_clicks)
+                VALUES ($id, $userName, $ts, $clicks, $active, $inactive, $rc)
                 ON CONFLICT(machine_id) DO UPDATE SET
                     user_name        = $userName,
                     last_seen        = $ts,
                     total_clicks     = $clicks,
                     active_seconds   = $active,
-                    inactive_seconds = $inactive
+                    inactive_seconds = $inactive,
+                    recent_clicks    = $rc
                 """;
             m.Parameters.AddWithValue("$id",       payload.MachineId);
             m.Parameters.AddWithValue("$userName", payload.UserName ?? "");
@@ -88,6 +134,7 @@ public sealed class ServerDb : IDisposable
             m.Parameters.AddWithValue("$clicks",   payload.TotalClicks);
             m.Parameters.AddWithValue("$active",   payload.ActiveSeconds);
             m.Parameters.AddWithValue("$inactive", payload.InactiveSeconds);
+            m.Parameters.AddWithValue("$rc",       dClicks);
             m.ExecuteNonQuery();
 
             // replace app stats for this machine
@@ -111,6 +158,30 @@ public sealed class ServerDb : IDisposable
                 a.ExecuteNonQuery();
             }
 
+            // Accumulate daily activity
+            if (dClicks > 0 || dActive > 0 || dInactive > 0)
+            {
+                var today = DateTime.Now.ToString("yyyy-MM-dd");
+                var d = _conn.CreateCommand();
+                d.Transaction = tx;
+                d.CommandText = """
+                    INSERT INTO machine_daily (machine_id, user_name, day, clicks, active_sec, inactive_sec)
+                    VALUES ($id, $user, $day, $dc, $da, $di)
+                    ON CONFLICT(machine_id, day) DO UPDATE SET
+                        user_name    = $user,
+                        clicks       = clicks + $dc,
+                        active_sec   = active_sec + $da,
+                        inactive_sec = inactive_sec + $di
+                    """;
+                d.Parameters.AddWithValue("$id",   payload.MachineId);
+                d.Parameters.AddWithValue("$user", payload.UserName ?? "");
+                d.Parameters.AddWithValue("$day",  today);
+                d.Parameters.AddWithValue("$dc",   dClicks);
+                d.Parameters.AddWithValue("$da",   dActive);
+                d.Parameters.AddWithValue("$di",   dInactive);
+                d.ExecuteNonQuery();
+            }
+
             tx.Commit();
         }
     }
@@ -122,7 +193,7 @@ public sealed class ServerDb : IDisposable
             var machines = new List<MachineSnapshot>();
 
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "SELECT machine_id, user_name, last_seen, total_clicks, active_seconds, inactive_seconds FROM machines ORDER BY last_seen DESC";
+            cmd.CommandText = "SELECT machine_id, user_name, last_seen, total_clicks, active_seconds, inactive_seconds, recent_clicks FROM machines ORDER BY last_seen DESC";
             using var r = cmd.ExecuteReader();
 
             while (r.Read())
@@ -131,7 +202,7 @@ public sealed class ServerDb : IDisposable
                 var userName = r.GetString(1);
                 var lastSeen = DateTime.Parse(r.GetString(2)).ToUniversalTime();
                 var apps = GetAppStats(id);
-                machines.Add(new MachineSnapshot(id, userName, lastSeen, r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), apps));
+                machines.Add(new MachineSnapshot(id, userName, lastSeen, r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6), apps));
             }
 
             return machines;
@@ -148,6 +219,70 @@ public sealed class ServerDb : IDisposable
         while (r.Read())
             list.Add(new AppStat(r.GetString(0), r.GetInt64(1)));
         return list;
+    }
+
+    public string GetSetting(string key)
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT value FROM settings WHERE key = $k";
+            cmd.Parameters.AddWithValue("$k", key);
+            return cmd.ExecuteScalar() as string ?? "";
+        }
+    }
+
+    public void SetSetting(string key, string value)
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO settings (key, value) VALUES ($k, $v)
+                ON CONFLICT(key) DO UPDATE SET value = $v
+                """;
+            cmd.Parameters.AddWithValue("$k", key);
+            cmd.Parameters.AddWithValue("$v", value);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    public List<PeriodMachineStat> GetPeriodStats(string from, string to)
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT machine_id, user_name, day, clicks, active_sec, inactive_sec
+                FROM machine_daily
+                WHERE day >= $from AND day <= $to
+                ORDER BY machine_id, day
+                """;
+            cmd.Parameters.AddWithValue("$from", from);
+            cmd.Parameters.AddWithValue("$to",   to);
+
+            var days  = new Dictionary<string, List<DailyEntry>>();
+            var names = new Dictionary<string, string>();
+
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var id = r.GetString(0);
+                names[id] = r.GetString(1);
+                if (!days.TryGetValue(id, out var list))
+                    days[id] = list = new List<DailyEntry>();
+                list.Add(new DailyEntry(r.GetString(2), r.GetInt64(3), r.GetInt64(4), r.GetInt64(5)));
+            }
+
+            return days.Select(kv => new PeriodMachineStat(
+                kv.Key,
+                names.GetValueOrDefault(kv.Key, ""),
+                kv.Value.Sum(d => d.Clicks),
+                kv.Value.Sum(d => d.ActiveSec),
+                kv.Value.Sum(d => d.InactiveSec),
+                kv.Value
+            )).ToList();
+        }
     }
 
     public void Dispose() => _conn.Dispose();

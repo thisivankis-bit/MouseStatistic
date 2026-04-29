@@ -6,7 +6,7 @@ public class AppConfig
 {
     public string ServerUrl { get; set; } = "";
     public string MachineId { get; set; } = "";
-    public string UserName { get; set; } = "";
+    public string UserName  { get; set; } = "";
 
     public string ResolvedMachineId =>
         string.IsNullOrWhiteSpace(MachineId) ? Environment.MachineName : MachineId;

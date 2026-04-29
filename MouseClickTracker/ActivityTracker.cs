@@ -80,6 +80,19 @@ public sealed class ActivityTracker : IDisposable
         }
     }
 
+    public void Reset()
+    {
+        lock (_flushLock)
+        {
+            ActiveSeconds    = 0;
+            InactiveSeconds  = 0;
+            _pendingActive   = 0;
+            _pendingInactive = 0;
+            _pendingAppTime.Clear();
+            _ticksSinceSave  = 0;
+        }
+    }
+
     public void Dispose()
     {
         _timer.Dispose();

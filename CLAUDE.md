@@ -43,7 +43,7 @@ The app is a WinForms process that wires together several independent components
 
 ```
 MouseHook (WinAPI WH_MOUSE_LL)
-  ├── Clicked  →  DataStore.Increment()        — writes to SQLite
+  ├── Clicked  →  [IsInWorkHours check] → DataStore.Increment()
   └── Activity →  ActivityTracker.RegisterActivity()
 
 ActivityTracker (1-second timer)
@@ -57,51 +57,79 @@ DataStore (SQLite via Microsoft.Data.Sqlite)
               app_stats(process_name, seconds)
 
 WebServer (HttpListener on :5000)
-  ├── GET /          — embedded HTML dashboard
-  └── GET /api/stats — JSON snapshot read from DataStore + ActivityTracker
+  ├── GET /          — embedded HTML dashboard (retro pixel art, updates every 1s)
+  └── GET /api/stats — JSON snapshot from DataStore + ActivityTracker
 
-SyncService (optional, 1-minute timer)
-  └── POST /api/sync → MouseClickServer   (only if ServerUrl set in appsettings.json)
+SyncService (optional, 1-minute timer) — only created when ServerUrl is set
+  ├── POST /api/sync → MouseClickServer  (sends clicks, activity, app stats, userName)
+  └── GET  /api/config ← MouseClickServer  (receives workStart, workEnd, resetTime)
+       └── calls OnConfigReceived() callback → updates MainForm fields
+
+ResetTimer (30-second timer, always active)
+  └── CheckReset() — fires DataStore.Reset() + ActivityTracker.Reset() when time matches resetTime
 ```
 
-**Thread safety**: `DataStore` uses a `lock` on all methods — it is accessed from the WinAPI hook callback thread, the `ActivityTracker` timer thread, and the `WebServer` request threads concurrently.
+**Thread safety**: `DataStore` uses a `lock` on all methods. `ActivityTracker.Reset()` acquires `_flushLock` but `Tick()` does not — there is a known minor race on reset.
 
 **Config** (`appsettings.json` next to exe):
 ```json
-{ "ServerUrl": "http://<server-ip>:5001", "MachineId": "" }
+{
+  "ServerUrl": "http://<server-ip>:5001",
+  "MachineId": "",
+  "UserName": "Иван"
+}
 ```
-`MachineId` defaults to `Environment.MachineName` if empty. `SyncService` is not created at all when `ServerUrl` is blank.
+`MachineId` defaults to `Environment.MachineName` if empty. `UserName` is displayed on the server dashboard. Work hours and reset time are **not** stored locally — they come from the server via `/api/config`.
+
+**Schedule (server-driven)**: `_workStart`, `_workEnd`, `_resetTime` are in-memory fields in `MainForm`, set by the `SyncService` callback. `_labelSchedule` in the form shows the current received schedule (blue = active, gray = not configured).
+
+**Reset behaviour**: `DataStore.Reset()` zeroes `total`, `active_seconds`, `inactive_seconds`, and deletes all `app_stats` rows. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together everywhere.
 
 ## Server Architecture (`MouseClickServer`)
 
 Minimal ASP.NET Core API that runs as a Windows Service.
 
 ```
-POST /api/sync   — receives SyncPayload from clients, upserts into ServerDb
-GET  /api/machines — returns all machine snapshots ordered by last_seen DESC
-GET  /           — embedded HTML dashboard (polls /api/machines every 30s)
+POST /api/sync    — upserts machine snapshot (clicks, activity, app_stats, user_name)
+GET  /api/machines — all machine snapshots ordered by last_seen DESC
+GET  /api/config  — returns work_start, work_end, reset_time from settings table
+POST /api/config  — saves work_start, work_end, reset_time to settings table
+GET  /            — embedded HTML dashboard (3 tabs, 30s poll)
 ```
 
 **Database**: `%ProgramData%\MouseClickServer\server.db`
 ```
-machines(machine_id PK, last_seen, total_clicks, active_seconds, inactive_seconds)
+machines(machine_id PK, user_name, last_seen, total_clicks, active_seconds, inactive_seconds)
 machine_app_stats(machine_id, process_name, seconds — composite PK)
+settings(key PK, value)   ← stores work_start / work_end / reset_time
 ```
 
-Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in one transaction) — the server stores the latest snapshot, not a history.
+Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in one transaction). Both `ServerDb` and `DataStore` run a `Migrate()` on startup to `ALTER TABLE ADD COLUMN` for backward compatibility with older databases.
 
-**Online status logic** (dashboard only, not in DB): `last_seen < 90s` = online, `< 600s` = away, else offline.
+**Online status** (dashboard only, not in DB): `last_seen < 90s` = online, `< 600s` = away, else offline.
+
+## Dashboard (server-side, `Program.cs → Dashboard.Html`)
+
+Three tabs rendered as a single `const string` HTML page:
+
+- **Статистика** — card grid per machine with clicks, active/inactive time, top-5 apps
+- **Офис** — isometric office scene on one `<canvas id="office-cv" width="960" height="420">`, animated via `requestAnimationFrame`
+- **Расписание** — `<input type="time">` fields for work hours and auto-reset, saved via `POST /api/config`
+
+**Isometric rendering** (`drawBox`, `drawIsoTile`, `drawIsoDesk`, `drawOffice`): pure canvas paths, no pixel arrays. Painter's algorithm: desks sorted by `col + row` ascending. Online workers bob with `Math.sin`. Offline workers slump with "z z" text. Name labels drawn below each desk tile.
 
 ## Installer Scripts
 
 Both installers are Inno Setup 6 scripts in `<project>/installer/setup.iss`. Output goes to `<project>/installer/output/`.
 
-- **Client installer**: prompts for `ServerUrl`, writes `appsettings.json` post-install; optionally adds to Windows startup via registry `HKCU\...\Run`.
+- **Client installer**: prompts for `ServerUrl` and `UserName`, writes `appsettings.json` post-install; optionally adds to Windows startup via registry `HKCU\...\Run`.
 - **Server installer**: prompts for port (default 5001), writes `appsettings.json` (`Urls`), registers a Windows Service via `sc.exe`, adds a Windows Firewall inbound rule via `netsh`, and auto-starts the service. Uninstaller reverses all of this.
 
 ## Key Patterns
 
 - **No dependency injection** — components are instantiated directly in `MainForm` constructor and passed by reference.
-- **Embedded HTML** — both the client `WebServer` and the server `Dashboard` class contain their full HTML/CSS/JS as `const string` literals. Edit these in-place.
-- **Batched SQLite writes** — `ActivityTracker` accumulates pending counters in memory and flushes every 10 ticks to reduce write frequency. Always call `Flush()` before reading totals in tests or after forced stop.
+- **Embedded HTML** — both the client `WebServer.Html` and the server `Dashboard.Html` are `const string` literals. Edit them in-place; there are no separate asset files.
+- **Server-driven client config** — work hours and reset time live only in the server DB (`settings` table). Clients receive them via `GET /api/config` inside `SyncService.Sync()` and apply them in-memory. If `ServerUrl` is blank, these features are inactive.
+- **Batched SQLite writes** — `ActivityTracker` accumulates pending counters in memory and flushes every 10 ticks. Call `Flush()` before reading totals after a forced stop.
 - **WinAPI hook lifetime** — `MouseHook` holds a delegate reference (`_proc`) as a field to prevent GC collection while the hook is active.
+- **`SettingsForm`** — runtime dialog for editing `ServerUrl` and `UserName`. On save, disposes and recreates `SyncService` without restarting the app.
