@@ -18,3 +18,6 @@ MouseClickServer/installer/output/
 *.db
 *.db-shm
 *.db-wal
+
+# Claude Code local data (conversation logs, local settings)
+.claude/
