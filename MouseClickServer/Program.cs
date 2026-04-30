@@ -460,174 +460,145 @@ namespace MouseClickServer
                             </div>`;
                     }
 
-                    // ── Office tab — animated characters ──────────────────────
-                    function _charPalette(i) {
-                        const S = ['#4870c8','#c84848','#48c870','#9848c8','#c8a048','#48c8c0','#c84890','#78c848'];
-                        const P = ['#283870','#702828','#287040','#582870','#705830','#287068','#702858','#407028'];
-                        const H = ['#2c1a08','#1a1a1a','#8c6814','#5a3010','#a07828','#401808','#c89838','#3a3a50'];
-                        return { shirt: S[i%S.length], pant: P[i%P.length], hair: H[i%H.length] };
+                    // ── Office tab — Mario pixel-art characters ───────────────
+                    // Pixel colors: r=red(hat/shirt) s=skin b=brown(hair/boots) u=blue(overalls)
+                    const _mCol = { r:'#D83010', s:'#F8A070', b:'#5C2808', u:'#2858C8', '0':null };
+
+                    function _sprite(ctx, ox, oy, rows, sc, pal) {
+                        rows.forEach((row, ry) => {
+                            for (let rx = 0; rx < row.length; rx++) {
+                                const c = pal[row[rx]]; if (!c) continue;
+                                ctx.fillStyle = c;
+                                ctx.fillRect(ox + rx*sc, oy + ry*sc, sc, sc);
+                            }
+                        });
                     }
 
-                    function _drawDancer(ctx, cx, cy, pal, tick) {
-                        const t   = tick * 0.12;
-                        const bob = Math.sin(t) * 9;
-                        const y   = cy + bob;
+                    const _SP = {
+                        // 12-wide, 14-tall — standing
+                        stand: [
+                            '00rrrrrr0000','0rrrrrrrrr00','0bbbsssbbb00',
+                            '0bssssssssb0','0bsssssssb00','00bbbssbb000',
+                            '000rrrrrr000','00rrrrrrrr00','0uurrrruuuu0',
+                            '0uuuuuuuuuu0','00uuuuuuuu00','00uu000uuu00',
+                            '0bbb000bbb00','0b000000b000',
+                        ],
+                        // running frame A — right arm up, left leg forward
+                        runA: [
+                            '00rrrrrr0000','0rrrrrrrrr00','0bbbsssbbb00',
+                            '0bssssssssb0','0bsssssssb00','00bbbssbb000',
+                            '0srrrrrrrs00','suurrrruuuus','0uuuuuuuuu00',
+                            '000uu0uuuu00','0uuu00000u00','ubbb00000b00',
+                            'bbb0000bbb00','b000000bb000',
+                        ],
+                        // running frame B — left arm up, right leg forward
+                        runB: [
+                            '00rrrrrr0000','0rrrrrrrrr00','0bbbsssbbb00',
+                            '0bssssssssb0','0bsssssssb00','00bbbssbb000',
+                            '00srrrrrrrs0','suuurrrruuus','00uuuuuuuuu0',
+                            '000uuuu0uu00','00u00000uuu0','00b00000ubbb',
+                            '00bbb000bbb0','000bb000bb00',
+                        ],
+                        // crouching — for sleeping state (12-wide, 12-tall)
+                        sleep: [
+                            '00rrrrrr0000','0bbbsssbbb00',
+                            '0bssssssssb0','0bsssssssb00',
+                            '00bbbssbb000','000rrrrrr000',
+                            '00rrrrrrrr00','0uurrrruuuu0',
+                            '0uuuuuuuuuu0','0uuuuuuuuuu0',
+                            '0bbbbbbbbb00','0b000000b000',
+                        ],
+                    };
 
-                        // Ground shadow
-                        ctx.fillStyle = 'rgba(0,0,0,0.09)';
-                        ctx.beginPath(); ctx.ellipse(cx, cy+64, 24, 7, 0, 0, Math.PI*2); ctx.fill();
-
-                        // Legs (dancing spread)
-                        const ls = Math.sin(t) * 13;
-                        ctx.strokeStyle = pal.pant; ctx.lineWidth = 12; ctx.lineCap = 'round';
-                        ctx.beginPath(); ctx.moveTo(cx, y+8); ctx.lineTo(cx-18+ls, y+52); ctx.stroke();
-                        ctx.beginPath(); ctx.moveTo(cx, y+8); ctx.lineTo(cx+18-ls, y+52); ctx.stroke();
-                        ctx.fillStyle = '#281a0a';
-                        ctx.beginPath(); ctx.ellipse(cx-18+ls, y+57, 10, 5, -0.2, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.ellipse(cx+18-ls, y+57, 10, 5,  0.2, 0, Math.PI*2); ctx.fill();
-
-                        // Body
-                        ctx.fillStyle = pal.shirt;
-                        ctx.beginPath(); ctx.ellipse(cx, y-5, 18, 24, 0, 0, Math.PI*2); ctx.fill();
-
-                        // Arms waving (opposite phase)
-                        const aw = Math.sin(t + Math.PI) * 22;
-                        ctx.strokeStyle = pal.shirt; ctx.lineWidth = 10; ctx.lineCap = 'round';
-                        ctx.beginPath(); ctx.moveTo(cx-15, y-14); ctx.lineTo(cx-36, y-30+aw);  ctx.stroke();
-                        ctx.beginPath(); ctx.moveTo(cx+15, y-14); ctx.lineTo(cx+36, y-30-aw);  ctx.stroke();
-
-                        // Neck + head
-                        ctx.fillStyle = '#f5c9a0';
-                        ctx.beginPath(); ctx.ellipse(cx, y-27, 6, 8, 0, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(cx, y-46, 21, 0, Math.PI*2); ctx.fill();
-                        ctx.fillStyle = pal.hair;
-                        ctx.beginPath(); ctx.arc(cx, y-48, 20, Math.PI+0.25, -0.25); ctx.fill();
-
-                        // Happy face
-                        ctx.fillStyle = '#3a2510';
-                        ctx.beginPath(); ctx.arc(cx-7, y-47, 3,   0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(cx+7, y-47, 3,   0, Math.PI*2); ctx.fill();
-                        ctx.fillStyle = '#fff';
-                        ctx.beginPath(); ctx.arc(cx-6, y-49, 1.3, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(cx+8, y-49, 1.3, 0, Math.PI*2); ctx.fill();
-                        ctx.strokeStyle = '#3a2510'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-                        ctx.beginPath(); ctx.arc(cx, y-41, 8, 0.2, Math.PI-0.2); ctx.stroke();
-
-                        // Floating music notes
-                        ctx.textAlign = 'center';
-                        for (let n = 0; n < 2; n++) {
-                            const ph = (tick*0.02 + n*0.5) % 1;
-                            const nx = cx + (n===0 ? 34 : -32);
-                            const ny = y - 48 - ph*42;
-                            const na = ph < 0.6 ? 0.85 : (1-ph)/0.4*0.85;
-                            ctx.fillStyle = `rgba(${n===0?'80,60,220':'220,60,120'},${na})`;
-                            ctx.font = `bold ${13+n*2}px sans-serif`;
-                            ctx.fillText(n===0 ? '♪' : '♫', nx, ny);
+                    function _drawMarioActive(ctx, cx, cy, tick) {
+                        const sc  = 6;
+                        const fr  = Math.floor(tick / 7) % 2 === 0 ? _SP.runA : _SP.runB;
+                        const bob = Math.sin(tick * 0.18) * 6;
+                        const W   = fr[0].length * sc, H = fr.length * sc;
+                        const ox  = Math.round(cx - W / 2), oy = Math.round(cy - H * 0.55 + bob);
+                        ctx.fillStyle = 'rgba(0,0,0,0.10)';
+                        ctx.beginPath(); ctx.ellipse(cx, cy + H * 0.48 + 4, 28, 6, 0, 0, Math.PI * 2); ctx.fill();
+                        _sprite(ctx, ox, oy, fr, sc, _mCol);
+                        // Floating coins
+                        for (let i = 0; i < 2; i++) {
+                            const ph = (tick * 0.023 + i * 0.5) % 1;
+                            const na = ph < 0.6 ? 0.9 : (1 - ph) / 0.4 * 0.9;
+                            const nx = cx + (i === 0 ? 44 : -36), ny = cy - 22 - ph * 44;
+                            ctx.globalAlpha = na;
+                            ctx.fillStyle = '#F8C828';
+                            ctx.beginPath(); ctx.arc(nx, ny, 7, 0, Math.PI * 2); ctx.fill();
+                            ctx.fillStyle = '#FFEE88';
+                            ctx.beginPath(); ctx.arc(nx - 2, ny - 2, 2.5, 0, Math.PI * 2); ctx.fill();
+                            ctx.strokeStyle = '#A07800'; ctx.lineWidth = 1.5;
+                            ctx.beginPath(); ctx.arc(nx, ny, 7, 0, Math.PI * 2); ctx.stroke();
                         }
-                        ctx.textAlign = 'left';
+                        ctx.globalAlpha = 1;
                     }
 
-                    function _drawSleeper(ctx, cx, cy, pal, tick) {
-                        const breathe = Math.sin(tick * 0.04) * 1.5;
-
-                        // Ground shadow
-                        ctx.fillStyle = 'rgba(0,0,0,0.09)';
-                        ctx.beginPath(); ctx.ellipse(cx, cy+64, 22, 7, 0, 0, Math.PI*2); ctx.fill();
-
-                        // Legs (seated)
-                        ctx.strokeStyle = pal.pant; ctx.lineWidth = 12; ctx.lineCap = 'round';
-                        ctx.beginPath(); ctx.moveTo(cx-5, cy+12); ctx.lineTo(cx-22, cy+55); ctx.stroke();
-                        ctx.beginPath(); ctx.moveTo(cx+5, cy+12); ctx.lineTo(cx+22, cy+55); ctx.stroke();
-                        ctx.fillStyle = '#281a0a';
-                        ctx.beginPath(); ctx.ellipse(cx-22, cy+59, 9, 5, -0.2, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.ellipse(cx+22, cy+59, 9, 5,  0.2, 0, Math.PI*2); ctx.fill();
-
-                        // Body (slight forward lean)
-                        ctx.fillStyle = pal.shirt;
-                        ctx.beginPath(); ctx.ellipse(cx+4, cy-4+breathe, 17, 22, 0.18, 0, Math.PI*2); ctx.fill();
-
-                        // Arms hanging at sides
-                        ctx.strokeStyle = pal.shirt; ctx.lineWidth = 10; ctx.lineCap = 'round';
-                        ctx.beginPath(); ctx.moveTo(cx-10, cy-14); ctx.lineTo(cx-20, cy+20+breathe); ctx.stroke();
-                        ctx.beginPath(); ctx.moveTo(cx+18, cy-14); ctx.lineTo(cx+26, cy+20+breathe); ctx.stroke();
-
-                        // Neck + head (drooped)
-                        ctx.fillStyle = '#f5c9a0';
-                        ctx.beginPath(); ctx.ellipse(cx+6, cy-24+breathe, 6, 7, 0.18, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(cx+9, cy-42, 21, 0, Math.PI*2); ctx.fill();
-                        ctx.fillStyle = pal.hair;
-                        ctx.beginPath(); ctx.arc(cx+9, cy-44, 20, Math.PI+0.5, 0.15); ctx.fill();
-
-                        // Sleeping face
-                        ctx.strokeStyle = '#3a2510'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-                        ctx.beginPath(); ctx.moveTo(cx-1,  cy-44); ctx.lineTo(cx+10, cy-44); ctx.stroke();
-                        ctx.beginPath(); ctx.moveTo(cx+14, cy-44); ctx.lineTo(cx+20, cy-44); ctx.stroke();
-                        ctx.lineWidth = 2;
-                        ctx.beginPath(); ctx.arc(cx+10, cy-35, 4, 0.3, Math.PI-0.3); ctx.stroke();
-
-                        // ZZZ floating up (staggered)
+                    function _drawMarioIdle(ctx, cx, cy, tick) {
+                        const sc   = 6;
+                        const sway = Math.sin(tick * 0.025) * 2;
+                        const W    = _SP.sleep[0].length * sc, H = _SP.sleep.length * sc;
+                        const ox   = Math.round(cx - W / 2 + sway), oy = Math.round(cy - H * 0.50);
+                        ctx.fillStyle = 'rgba(0,0,0,0.08)';
+                        ctx.beginPath(); ctx.ellipse(cx, cy + H * 0.52 + 4, 24, 5, 0, 0, Math.PI * 2); ctx.fill();
+                        _sprite(ctx, ox, oy, _SP.sleep, sc, _mCol);
                         ctx.textAlign = 'center';
                         for (let i = 0; i < 3; i++) {
-                            const ph = (tick*0.022 + i*0.33) % 1;
-                            const alpha = ph < 0.65 ? 0.9 : (1-ph)/0.35*0.9;
-                            ctx.fillStyle = `rgba(100,120,210,${alpha})`;
-                            ctx.font = `bold ${11+i*4}px "Segoe UI",sans-serif`;
-                            ctx.fillText('z', cx+32+i*7, cy-48 - ph*45);
+                            const ph = (tick * 0.020 + i * 0.33) % 1;
+                            const na = ph < 0.65 ? 0.88 : (1 - ph) / 0.35 * 0.88;
+                            ctx.globalAlpha = na;
+                            ctx.fillStyle = '#6080D0';
+                            ctx.font = `bold ${10 + i * 4}px "Segoe UI",sans-serif`;
+                            ctx.fillText('z', cx + 34 + i * 7, oy - 6 - ph * 38);
                         }
-                        ctx.textAlign = 'left';
+                        ctx.globalAlpha = 1; ctx.textAlign = 'left';
                     }
 
-                    function _drawGhost(ctx, cx, cy, tick) {
-                        const float = Math.sin(tick*0.07) * 9;
-                        const gy    = cy - 8 + float;
+                    function _drawBoo(ctx, cx, cy, tick) {
+                        const float = Math.sin(tick * 0.06) * 8;
+                        const gy    = cy - 10 + float;
                         const R     = 32;
-
-                        // Shadow (shrinks as ghost floats up)
-                        ctx.globalAlpha = Math.max(0.04, 0.11 - float*0.004);
-                        ctx.fillStyle = '#666';
-                        ctx.beginPath(); ctx.ellipse(cx, cy+62, 19-float*0.3, 5, 0, 0, Math.PI*2); ctx.fill();
-                        ctx.globalAlpha = 0.80 + Math.sin(tick*0.05)*0.08;
-
-                        // Ghost body: dome top + wavy skirt
-                        ctx.fillStyle = '#dae6f8';
+                        ctx.globalAlpha = Math.max(0.05, 0.12 - float * 0.003);
+                        ctx.fillStyle = '#999';
+                        ctx.beginPath(); ctx.ellipse(cx, cy + 52, 18, 5, 0, 0, Math.PI * 2); ctx.fill();
+                        ctx.globalAlpha = 1;
+                        // Body
+                        ctx.fillStyle = '#F8F0D8';
                         ctx.beginPath();
-                        ctx.arc(cx, gy-R*0.2, R, Math.PI, 0);
-                        ctx.lineTo(cx+R, gy+R);
-                        ctx.quadraticCurveTo(cx+R*0.67, gy+R*0.55, cx+R*0.33, gy+R);
-                        ctx.quadraticCurveTo(cx,         gy+R*0.55, cx-R*0.33, gy+R);
-                        ctx.quadraticCurveTo(cx-R*0.67,  gy+R*0.55, cx-R,      gy+R);
+                        ctx.arc(cx, gy - R * 0.15, R, Math.PI, 0);
+                        ctx.lineTo(cx + R, gy + R * 0.85);
+                        ctx.quadraticCurveTo(cx + R * 0.67, gy + R * 0.48, cx + R * 0.33, gy + R * 0.85);
+                        ctx.quadraticCurveTo(cx,            gy + R * 0.48, cx - R * 0.33, gy + R * 0.85);
+                        ctx.quadraticCurveTo(cx - R * 0.67, gy + R * 0.48, cx - R,        gy + R * 0.85);
                         ctx.closePath(); ctx.fill();
-
+                        ctx.strokeStyle = '#D0C098'; ctx.lineWidth = 1.5; ctx.stroke();
                         // Eyes
-                        ctx.globalAlpha = 1;
-                        ctx.fillStyle = '#6278c0';
-                        ctx.beginPath(); ctx.ellipse(cx-R*0.38, gy-R*0.10, R*0.19, R*0.26, -0.18, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.ellipse(cx+R*0.38, gy-R*0.10, R*0.19, R*0.26,  0.18, 0, Math.PI*2); ctx.fill();
-                        ctx.fillStyle = '#dae6f8';
-                        ctx.beginPath(); ctx.ellipse(cx-R*0.35, gy-R*0.07, R*0.09, R*0.13, -0.18, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.ellipse(cx+R*0.41, gy-R*0.07, R*0.09, R*0.13,  0.18, 0, Math.PI*2); ctx.fill();
-
-                        // Wavy worried mouth
-                        ctx.strokeStyle = '#6278c0'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+                        ctx.fillStyle = '#F8F0D8';
+                        ctx.beginPath(); ctx.arc(cx - R * 0.34, gy - R * 0.10, R * 0.22, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(cx + R * 0.34, gy - R * 0.10, R * 0.22, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#201008';
+                        ctx.beginPath(); ctx.arc(cx - R * 0.34, gy - R * 0.10, R * 0.13, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(cx + R * 0.34, gy - R * 0.10, R * 0.13, 0, Math.PI * 2); ctx.fill();
+                        // Angry brows
+                        ctx.strokeStyle = '#201008'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+                        ctx.beginPath(); ctx.moveTo(cx - R*0.54, gy - R*0.28); ctx.lineTo(cx - R*0.14, gy - R*0.20); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(cx + R*0.54, gy - R*0.28); ctx.lineTo(cx + R*0.14, gy - R*0.20); ctx.stroke();
+                        // Mouth with fangs
+                        ctx.fillStyle = '#C04838';
                         ctx.beginPath();
-                        ctx.moveTo(cx-R*0.28, gy+R*0.40);
-                        ctx.quadraticCurveTo(cx-R*0.10, gy+R*0.52, cx,        gy+R*0.40);
-                        ctx.quadraticCurveTo(cx+R*0.10, gy+R*0.28, cx+R*0.28, gy+R*0.40);
-                        ctx.stroke();
-
-                        // Little hands
-                        ctx.fillStyle = '#dae6f8';
-                        ctx.beginPath(); ctx.ellipse(cx-R-7, gy+R*0.35, 10, 7, -0.35, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.ellipse(cx+R+7, gy+R*0.35, 10, 7,  0.35, 0, Math.PI*2); ctx.fill();
-
-                        ctx.globalAlpha = 1;
-
-                        // Pulsing "?" above
-                        const qa = (Math.sin(tick*0.06)+1)*0.32;
-                        ctx.fillStyle = `rgba(98,120,192,${qa})`;
-                        ctx.font = 'bold 14px "Segoe UI",sans-serif'; ctx.textAlign = 'center';
-                        ctx.fillText('? ? ?', cx, gy - R*1.38 - Math.sin(tick*0.08)*4);
-                        ctx.textAlign = 'left';
+                        ctx.moveTo(cx - R * 0.36, gy + R * 0.32);
+                        ctx.quadraticCurveTo(cx, gy + R * 0.52, cx + R * 0.36, gy + R * 0.32);
+                        ctx.lineTo(cx + R * 0.36, gy + R * 0.44);
+                        ctx.quadraticCurveTo(cx, gy + R * 0.64, cx - R * 0.36, gy + R * 0.44);
+                        ctx.closePath(); ctx.fill();
+                        ctx.fillStyle = '#FFFFF0';
+                        ctx.beginPath(); ctx.moveTo(cx-R*0.22,gy+R*0.34); ctx.lineTo(cx-R*0.10,gy+R*0.34); ctx.lineTo(cx-R*0.16,gy+R*0.48); ctx.closePath(); ctx.fill();
+                        ctx.beginPath(); ctx.moveTo(cx+R*0.10,gy+R*0.34); ctx.lineTo(cx+R*0.22,gy+R*0.34); ctx.lineTo(cx+R*0.16,gy+R*0.48); ctx.closePath(); ctx.fill();
+                        // Stubby arms
+                        ctx.fillStyle = '#F8F0D8'; ctx.strokeStyle = '#D0C098'; ctx.lineWidth = 1.5;
+                        ctx.beginPath(); ctx.ellipse(cx - R*1.14, gy + R*0.22, R*0.26, R*0.18, -0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                        ctx.beginPath(); ctx.ellipse(cx + R*1.14, gy + R*0.22, R*0.26, R*0.18,  0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
                     }
 
                     // online = кликает (recentClicks > 0 в последнем синке)
@@ -641,23 +612,21 @@ namespace MouseClickServer
                     }
 
                     function _drawCharSlot(ctx, cx, cy, machine, idx, tick) {
-                        const st  = machine ? getActivityStatus(machine) : 'offline';
-                        const pal = _charPalette(idx);
+                        const st = machine ? getActivityStatus(machine) : 'offline';
                         ctx.save();
-                        if      (st === 'offline') _drawGhost(ctx, cx, cy, tick);
-                        else if (st === 'online')  _drawDancer(ctx, cx, cy, pal, tick);
-                        else                       _drawSleeper(ctx, cx, cy, pal, tick);
+                        if      (st === 'offline') _drawBoo(ctx, cx, cy, tick);
+                        else if (st === 'online')  _drawMarioActive(ctx, cx, cy, tick);
+                        else                       _drawMarioIdle(ctx, cx, cy, tick);
                         ctx.restore();
-
                         if (machine) {
                             const nm = (machine.userName || machine.machineId).substring(0, 16);
                             ctx.textAlign = 'center';
                             ctx.font = 'bold 13px "Segoe UI",sans-serif';
                             ctx.fillStyle = st==='online' ? '#3d4faa' : st==='away' ? '#b05e10' : '#8090c8';
-                            ctx.fillText(nm, cx, cy+80);
+                            ctx.fillText(nm, cx, cy + 60);
                             ctx.font = '11px "Segoe UI",sans-serif';
                             ctx.fillStyle = st==='online' ? '#16a34a' : st==='away' ? '#d97706' : '#9ca3af';
-                            ctx.fillText(st==='online' ? '● онлайн' : st==='away' ? '● отошёл' : '○ офлайн', cx, cy+95);
+                            ctx.fillText(st==='online' ? '● онлайн' : st==='away' ? '● отошёл' : '○ офлайн', cx, cy + 75);
                             ctx.textAlign = 'left';
                         }
                     }
