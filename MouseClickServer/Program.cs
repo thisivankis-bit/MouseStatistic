@@ -475,43 +475,76 @@ namespace MouseClickServer
                     }
 
                     const _SP = {
-                        // 12-wide, 14-tall — standing
+                        // 16-wide, 14-tall — standing
                         stand: [
-                            '00rrrrrr0000','0rrrrrrrrr00','0bbbsssbbb00',
-                            '0bssssssssb0','0bsssssssb00','00bbbssbb000',
-                            '000rrrrrr000','00rrrrrrrr00','0uurrrruuuu0',
-                            '0uuuuuuuuuu0','00uuuuuuuu00','00uu000uuu00',
-                            '0bbb000bbb00','0b000000b000',
+                            '0000rrrrrr000000',
+                            '000rrrrrrrrrr000',
+                            '00bbbbssssbbbb00',
+                            '00bbsssssssbb000',
+                            '0bbssssssssssb00',
+                            '00bsssssssssb000',
+                            '000bbbbbbbbb0000',
+                            '00srrrrrrrrrs000',
+                            '0uurrrrrrrruuuu0',
+                            '0uuuuuuuuuuuuuu0',
+                            '00uuuuuuuuuuuu00',
+                            '000uuuu00uuuu000',
+                            '000bbbb00bbbbb00',
+                            '00bbbbb00bbbb000',
                         ],
-                        // running frame A — right arm up, left leg forward
+                        // 16-wide, 14-tall — run frame A (left arm fwd, right leg fwd)
                         runA: [
-                            '00rrrrrr0000','0rrrrrrrrr00','0bbbsssbbb00',
-                            '0bssssssssb0','0bsssssssb00','00bbbssbb000',
-                            '0srrrrrrrs00','suurrrruuuus','0uuuuuuuuu00',
-                            '000uu0uuuu00','0uuu00000u00','ubbb00000b00',
-                            'bbb0000bbb00','b000000bb000',
+                            '0000rrrrrr000000',
+                            '000rrrrrrrrrr000',
+                            '00bbbbssssbbbb00',
+                            '00bbsssssssbb000',
+                            '0bbssssssssssb00',
+                            '00bsssssssssb000',
+                            '000bbbbbbbbb0000',
+                            'ssssrrrrrrrss000',
+                            '0uurrrrrrrruuuu0',
+                            '0uuuuuuuuuuuuu00',
+                            '000uuuuuuuuuu000',
+                            '000buuuu0uuub000',
+                            '0bbbbuuu00uubb00',
+                            '0bbbb000000bbb00',
                         ],
-                        // running frame B — left arm up, right leg forward
+                        // 16-wide, 14-tall — run frame B (right arm fwd, left leg fwd)
                         runB: [
-                            '00rrrrrr0000','0rrrrrrrrr00','0bbbsssbbb00',
-                            '0bssssssssb0','0bsssssssb00','00bbbssbb000',
-                            '00srrrrrrrs0','suuurrrruuus','00uuuuuuuuu0',
-                            '000uuuu0uu00','00u00000uuu0','00b00000ubbb',
-                            '00bbb000bbb0','000bb000bb00',
+                            '0000rrrrrr000000',
+                            '000rrrrrrrrrr000',
+                            '00bbbbssssbbbb00',
+                            '00bbsssssssbb000',
+                            '0bbssssssssssb00',
+                            '00bsssssssssb000',
+                            '000bbbbbbbbb0000',
+                            '000ssrrrrrrrssss',
+                            '0uurrrrrrrruuuu0',
+                            '0uuuuuuuuuuuuu00',
+                            '000uuuuuuuuuu000',
+                            '000buuu0uuuub000',
+                            '00bbuu00uuubbb00',
+                            '000bb000000bbbb0',
                         ],
-                        // crouching — for sleeping state (12-wide, 12-tall)
+                        // 16-wide, 12-tall — crouching (sleep)
                         sleep: [
-                            '00rrrrrr0000','0bbbsssbbb00',
-                            '0bssssssssb0','0bsssssssb00',
-                            '00bbbssbb000','000rrrrrr000',
-                            '00rrrrrrrr00','0uurrrruuuu0',
-                            '0uuuuuuuuuu0','0uuuuuuuuuu0',
-                            '0bbbbbbbbb00','0b000000b000',
+                            '0000rrrrrr000000',
+                            '000rrrrrrrrrr000',
+                            '00bbbbssssbbbb00',
+                            '00bbsssssssbb000',
+                            '000bsssssssb0000',
+                            '000bbbbbbbbb0000',
+                            '000rrrrrrrrrr000',
+                            '0uurrrrrrrruuuu0',
+                            '0uuuuuuuuuuuuuu0',
+                            '0uuuuuuuuuuuuuu0',
+                            '0bbbbbbbbbbbbb00',
+                            '0bbbb00000bbbb00',
                         ],
                     };
 
                     function _drawMarioActive(ctx, cx, cy, tick) {
-                        const sc  = 6;
+                        const sc  = 4;
                         const fr  = Math.floor(tick / 7) % 2 === 0 ? _SP.runA : _SP.runB;
                         const bob = Math.sin(tick * 0.18) * 6;
                         const W   = fr[0].length * sc, H = fr.length * sc;
@@ -536,7 +569,7 @@ namespace MouseClickServer
                     }
 
                     function _drawMarioIdle(ctx, cx, cy, tick) {
-                        const sc   = 6;
+                        const sc   = 4;
                         const sway = Math.sin(tick * 0.025) * 2;
                         const W    = _SP.sleep[0].length * sc, H = _SP.sleep.length * sc;
                         const ox   = Math.round(cx - W / 2 + sway), oy = Math.round(cy - H * 0.50);
