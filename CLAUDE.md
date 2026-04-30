@@ -123,9 +123,13 @@ Four tabs rendered as a single `const string` HTML page:
 - **Расписание** — `<input type="time">` fields for work hours and auto-reset, saved via `POST /api/config`
 
 **Office character states** (function `getActivityStatus(m)`, separate from `getStatus()`):
-- **Танцует** (dancing) — `recentClicks > 0` AND `lastSeen < 150s`
-- **Спит** (sleeping) — connected but no recent clicks (`lastSeen < 600s`)
-- **Призрак** (ghost) — `lastSeen ≥ 600s`
+- **online** → `_drawMarioActive` — 2-frame running Mario (16×14 px sprites, scale 4), floating coins
+- **away** → `_drawMarioIdle` — crouching Mario (16×12 px sprites, scale 4), rising Zzz bubbles
+- **offline** → `_drawBoo` — procedural Boo ghost (Mario universe), angry brows, fangs, stubby arms
+
+Conditions: `online` = `recentClicks > 0 && age < 150s`; `away` = connected but no clicks (`age < 600s`); `offline` = `age ≥ 600s`.
+
+**Pixel sprite system**: sprites are defined in `const _SP` as arrays of 16-char strings; chars map to colors via `const _mCol` (`r`=red, `s`=skin, `b`=brown, `u`=blue, `0`=transparent). Drawn by `_sprite(ctx, ox, oy, rows, sc, pal)` using `fillRect` per pixel.
 
 `getStatus()` (used for stats tab dots) uses only `lastSeen`: online < 90s, away < 600s, offline otherwise.
 
