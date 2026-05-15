@@ -111,9 +111,22 @@ public sealed class ServerDb : IDisposable
             }
 
             // If new value < prev the counter was reset; treat new value as the delta
+            bool wasReset  = payload.TotalClicks < prevClicks;
             long dClicks   = payload.TotalClicks    >= prevClicks   ? payload.TotalClicks    - prevClicks   : payload.TotalClicks;
             long dActive   = payload.ActiveSeconds   >= prevActive   ? payload.ActiveSeconds   - prevActive   : payload.ActiveSeconds;
             long dInactive = payload.InactiveSeconds >= prevInactive ? payload.InactiveSeconds - prevInactive : payload.InactiveSeconds;
+
+            // On reset: wipe today's daily entry so Reports reflect only post-reset activity
+            if (wasReset)
+            {
+                var resetDay = DateTime.Now.ToString("yyyy-MM-dd");
+                var rz = _conn.CreateCommand();
+                rz.Transaction = tx;
+                rz.CommandText = "UPDATE machine_daily SET clicks = 0, active_sec = 0, inactive_sec = 0 WHERE machine_id = $id AND day = $day";
+                rz.Parameters.AddWithValue("$id",  payload.MachineId);
+                rz.Parameters.AddWithValue("$day", resetDay);
+                rz.ExecuteNonQuery();
+            }
 
             var m = _conn.CreateCommand();
             m.Transaction = tx;

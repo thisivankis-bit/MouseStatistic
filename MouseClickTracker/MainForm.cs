@@ -29,18 +29,10 @@ public class MainForm : Form
         Location = new Point(100, 65)
     };
 
-    private readonly Button _btnReset = new()
-    {
-        Text = "Сбросить",
-        Location = new Point(90, 145),
-        Size = new Size(110, 32),
-        Font = new Font("Segoe UI", 10)
-    };
-
     private readonly Button _btnSettings = new()
     {
         Text = "Настройки",
-        Location = new Point(90, 185),
+        Location = new Point(90, 145),
         Size = new Size(110, 28),
         Font = new Font("Segoe UI", 9),
         FlatStyle = FlatStyle.Flat,
@@ -52,8 +44,11 @@ public class MainForm : Form
         Font      = new Font("Segoe UI", 7.5f),
         ForeColor = Color.Gray,
         AutoSize  = true,
-        Location  = new Point(12, 222)
+        Location  = new Point(12, 182)
     };
+
+    private readonly NotifyIcon _tray;
+    private bool _realClose;
 
     public MainForm()
     {
@@ -66,22 +61,28 @@ public class MainForm : Form
                 OnConfigReceived);
         _resetTimer = new System.Threading.Timer(CheckReset, null, 0, 30_000);
 
+        var trayMenu = new ContextMenuStrip();
+        trayMenu.Items.Add("Открыть", null, (_, _) => ShowWindow());
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add("Выход",   null, (_, _) => { _realClose = true; Close(); });
+
+        _tray = new NotifyIcon
+        {
+            Icon             = SystemIcons.Application,
+            Text             = "Mouse Click Tracker",
+            ContextMenuStrip = trayMenu,
+            Visible          = true
+        };
+        _tray.DoubleClick += (_, _) => ShowWindow();
+
         Text = "Mouse Click Tracker";
-        Size = new Size(300, 270);
+        Size = new Size(300, 230);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
 
         _clickCount = _store.Load();
         _labelCount.Text = _clickCount.ToString();
-
-        _btnReset.Click += (_, _) =>
-        {
-            _store.Reset();
-            _activity.Reset();
-            _clickCount = 0;
-            _labelCount.Text = "0";
-        };
 
         _btnSettings.Click += (_, _) =>
         {
@@ -101,7 +102,7 @@ public class MainForm : Form
         };
 
         UpdateScheduleLabel();
-        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _btnReset, _btnSettings, _labelSchedule });
+        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _btnSettings, _labelSchedule });
 
         _hook.Clicked += OnClicked;
         _hook.Activity += (_, _) => _activity.RegisterActivity();
@@ -163,8 +164,28 @@ public class MainForm : Form
         return start <= end ? now >= start && now <= end : now >= start || now <= end;
     }
 
+    private void ShowWindow()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (!_realClose)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+        base.OnFormClosing(e);
+    }
+
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _tray.Visible = false;
+        _tray.Dispose();
         _hook.Dispose();
         _resetTimer?.Dispose();
         _sync?.Dispose();

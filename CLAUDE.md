@@ -70,6 +70,8 @@ ResetTimer (30-second timer, always active)
   └── CheckReset() — fires DataStore.Reset() + ActivityTracker.Reset() when time matches resetTime
 ```
 
+**System tray**: closing the window hides it to tray (`OnFormClosing` cancels the event and calls `Hide()`). The `NotifyIcon` has a context menu with "Открыть" (shows window) and "Выход" (sets `_realClose = true` then closes). Double-click on the tray icon also restores the window. The app only truly exits via the tray menu.
+
 **Thread safety**: `DataStore` uses a `lock` on all methods. `ActivityTracker.Reset()` acquires `_flushLock` but `Tick()` does not — there is a known minor race on reset.
 
 **Config** (`appsettings.json` next to exe):
@@ -84,7 +86,7 @@ ResetTimer (30-second timer, always active)
 
 **Schedule (server-driven)**: `_workStart`, `_workEnd`, `_resetTime` are in-memory fields in `MainForm`, set by the `SyncService` callback. `_labelSchedule` shows the current received schedule (blue = active, gray = not configured).
 
-**Reset behaviour**: `DataStore.Reset()` zeroes `total`, `active_seconds`, `inactive_seconds`, and deletes all `app_stats` rows. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together everywhere.
+**Reset behaviour**: `DataStore.Reset()` zeroes `total`, `active_seconds`, `inactive_seconds`, and deletes all `app_stats` rows. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together. There is no manual reset in the UI — reset only happens via the server-driven schedule (`CheckReset`).
 
 ## Server Architecture (`MouseClickServer`)
 
@@ -109,7 +111,7 @@ settings(key PK, value)   ← stores work_start / work_end / reset_time
 
 **`recent_clicks`**: filled on every sync with the delta since the previous sync (`new - prev`, or `new` if a reset occurred). Used by the dashboard office tab to decide whether to show a character as dancing (clicking) vs sleeping (idle).
 
-**Daily history**: on each sync, `Upsert()` reads the previous snapshot, computes click/time deltas, and upserts into `machine_daily` (local server date). Handles counter resets: if `new < prev`, the full new value is the delta.
+**Daily history**: on each sync, `Upsert()` reads the previous snapshot, computes click/time deltas, and upserts into `machine_daily` (local server date). When a reset is detected (`new < prev`), today's `machine_daily` row is zeroed before accumulating new deltas — this keeps the Reports tab consistent with the Statistics tab (both reflect only post-reset activity).
 
 Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in one transaction). Both `ServerDb` and `DataStore` run a `Migrate()` on startup to `ALTER TABLE ADD COLUMN` for backward compatibility with older databases.
 
