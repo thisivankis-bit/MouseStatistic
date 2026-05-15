@@ -3,6 +3,7 @@ namespace MouseClickTracker;
 public class MainForm : Form
 {
     private readonly MouseHook _hook = new();
+    private readonly KeyboardHook _kbHook = new();
     private readonly DataStore _store = new();
     private readonly WebServer _web;
     private readonly ActivityTracker _activity;
@@ -13,26 +14,48 @@ public class MainForm : Form
     private string _resetTime = "";
     private DateTime _lastReset = DateTime.MinValue;
     private int _clickCount;
+    private int _keyCount;
 
     private readonly Label _labelTitle = new()
     {
         Text = "Кликов:",
-        Font = new Font("Segoe UI", 14),
+        Font = new Font("Segoe UI", 12),
         AutoSize = true,
-        Location = new Point(95, 35)
+        Location = new Point(55, 30)
     };
 
     private readonly Label _labelCount = new()
     {
-        Font = new Font("Segoe UI", 40, FontStyle.Bold),
+        Text = "0",
+        Font = new Font("Segoe UI", 28, FontStyle.Bold),
+        AutoSize = false,
+        TextAlign = ContentAlignment.MiddleCenter,
+        Location = new Point(15, 55),
+        Size = new Size(170, 60)
+    };
+
+    private readonly Label _labelKeyTitle = new()
+    {
+        Text = "Клавиш:",
+        Font = new Font("Segoe UI", 12),
         AutoSize = true,
-        Location = new Point(100, 65)
+        Location = new Point(240, 30)
+    };
+
+    private readonly Label _labelKeyCount = new()
+    {
+        Text = "0",
+        Font = new Font("Segoe UI", 28, FontStyle.Bold),
+        AutoSize = false,
+        TextAlign = ContentAlignment.MiddleCenter,
+        Location = new Point(195, 55),
+        Size = new Size(170, 60)
     };
 
     private readonly Button _btnSettings = new()
     {
         Text = "Настройки",
-        Location = new Point(90, 145),
+        Location = new Point(135, 135),
         Size = new Size(110, 28),
         Font = new Font("Segoe UI", 9),
         FlatStyle = FlatStyle.Flat,
@@ -44,7 +67,7 @@ public class MainForm : Form
         Font      = new Font("Segoe UI", 7.5f),
         ForeColor = Color.Gray,
         AutoSize  = true,
-        Location  = new Point(12, 182)
+        Location  = new Point(12, 175)
     };
 
     private readonly NotifyIcon _tray;
@@ -76,13 +99,15 @@ public class MainForm : Form
         _tray.DoubleClick += (_, _) => ShowWindow();
 
         Text = "Mouse Click Tracker";
-        Size = new Size(300, 230);
+        Size = new Size(400, 220);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
 
-        _clickCount = _store.Load();
-        _labelCount.Text = _clickCount.ToString();
+        _clickCount      = _store.Load();
+        _keyCount        = _store.LoadKeys();
+        _labelCount.Text    = _clickCount.ToString();
+        _labelKeyCount.Text = _keyCount.ToString();
 
         _btnSettings.Click += (_, _) =>
         {
@@ -102,11 +127,16 @@ public class MainForm : Form
         };
 
         UpdateScheduleLabel();
-        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _btnSettings, _labelSchedule });
+        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _labelKeyTitle, _labelKeyCount, _btnSettings, _labelSchedule });
 
-        _hook.Clicked += OnClicked;
+        _hook.Clicked  += OnClicked;
         _hook.Activity += (_, _) => _activity.RegisterActivity();
         _hook.Start();
+
+        _kbHook.Pressed  += OnKeyPressed;
+        _kbHook.Activity += (_, _) => _activity.RegisterActivity();
+        _kbHook.Start();
+
         _web.Start();
     }
 
@@ -139,6 +169,14 @@ public class MainForm : Form
         Invoke(() => _labelCount.Text = _clickCount.ToString());
     }
 
+    private void OnKeyPressed(object? sender, EventArgs e)
+    {
+        if (!IsInWorkHours(_workStart, _workEnd)) return;
+        _store.IncrementKey();
+        _keyCount++;
+        Invoke(() => _labelKeyCount.Text = _keyCount.ToString());
+    }
+
     private void CheckReset(object? state)
     {
         if (string.IsNullOrWhiteSpace(_resetTime)) return;
@@ -152,8 +190,13 @@ public class MainForm : Form
         _store.Reset();
         _activity.Reset();
         _clickCount = 0;
+        _keyCount   = 0;
         if (IsHandleCreated)
-            BeginInvoke(() => _labelCount.Text = "0");
+            BeginInvoke(() =>
+            {
+                _labelCount.Text    = "0";
+                _labelKeyCount.Text = "0";
+            });
     }
 
     private static bool IsInWorkHours(string workStart, string workEnd)
@@ -187,6 +230,7 @@ public class MainForm : Form
         _tray.Visible = false;
         _tray.Dispose();
         _hook.Dispose();
+        _kbHook.Dispose();
         _resetTimer?.Dispose();
         _sync?.Dispose();
         _activity.Dispose();

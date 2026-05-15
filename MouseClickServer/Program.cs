@@ -21,9 +21,11 @@ app.MapGet("/api/machines", () => db.GetAll().Select(m => new
     userName        = m.UserName,
     lastSeen        = m.LastSeen,
     totalClicks     = m.TotalClicks,
+    totalKeys       = m.TotalKeys,
     activeSeconds   = m.ActiveSeconds,
     inactiveSeconds = m.InactiveSeconds,
     recentClicks    = m.RecentClicks,
+    recentKeys      = m.RecentKeys,
     appStats        = m.AppStats.Select(a => new { processName = a.ProcessName, seconds = a.Seconds })
 }));
 
@@ -54,9 +56,10 @@ app.MapGet("/api/stats", (string? from, string? to) =>
         machineId        = m.MachineId,
         userName         = m.UserName,
         totalClicks      = m.TotalClicks,
+        totalKeys        = m.TotalKeys,
         totalActiveSec   = m.TotalActiveSec,
         totalInactiveSec = m.TotalInactiveSec,
-        days = m.Days.Select(d => new { day = d.Day, clicks = d.Clicks, activeSec = d.ActiveSec, inactiveSec = d.InactiveSec })
+        days = m.Days.Select(d => new { day = d.Day, clicks = d.Clicks, keys = d.Keys, activeSec = d.ActiveSec, inactiveSec = d.InactiveSec })
     });
 });
 
@@ -73,6 +76,7 @@ namespace MouseClickServer
         string MachineId,
         string? UserName,
         long TotalClicks,
+        long TotalKeys,
         long ActiveSeconds,
         long InactiveSeconds,
         List<AppStatPayload> AppStats);
@@ -143,11 +147,12 @@ namespace MouseClickServer
                     .machine-id   { font-size: 0.7rem; color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
                     .last-seen { font-size: 0.75rem; color: #bbb; margin-left: auto; flex-shrink: 0; }
 
-                    .metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+                    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
                     .metric { background: #f8f9fa; border-radius: 10px; padding: 10px 12px; }
                     .m-label { font-size: 0.65rem; color: #bbb; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
                     .m-value { font-size: 1rem; font-weight: 600; color: #333; font-variant-numeric: tabular-nums; }
                     .metric.clicks .m-value   { color: #4f46e5; }
+                    .metric.keys .m-value     { color: #0891b2; }
                     .metric.active .m-value   { color: #16a34a; }
                     .metric.inactive .m-value { color: #dc2626; }
 
@@ -217,6 +222,7 @@ namespace MouseClickServer
                         <div class="summary-card"><div class="s-label">Машин</div><div class="s-value" id="s-machines">—</div></div>
                         <div class="summary-card"><div class="s-label">Онлайн</div><div class="s-value" id="s-online">—</div></div>
                         <div class="summary-card"><div class="s-label">Кликов всего</div><div class="s-value" id="s-clicks">—</div></div>
+                        <div class="summary-card"><div class="s-label">Клавиш всего</div><div class="s-value" id="s-keys">—</div></div>
                         <div class="summary-card"><div class="s-label">Активность всего</div><div class="s-value" id="s-active">—</div></div>
                     </div>
                     <div class="grid" id="grid"></div>
@@ -243,6 +249,7 @@ namespace MouseClickServer
                     </div>
                     <div class="summary" id="rep-summary">
                         <div class="summary-card"><div class="s-label">Кликов всего</div><div class="s-value" id="rep-s-clicks">—</div></div>
+                        <div class="summary-card"><div class="s-label">Клавиш всего</div><div class="s-value" id="rep-s-keys">—</div></div>
                         <div class="summary-card"><div class="s-label">Активно</div><div class="s-value" id="rep-s-active">—</div></div>
                         <div class="summary-card"><div class="s-label">% активности</div><div class="s-value" id="rep-s-pct">—</div></div>
                     </div>
@@ -330,15 +337,17 @@ namespace MouseClickServer
                             const data = await (await fetch(`/api/stats?from=${from}&to=${to}`)).json();
                             if (!data.length) {
                                 wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Нет данных за выбранный период</div></div>';
-                                ['rep-s-clicks','rep-s-active','rep-s-pct'].forEach(id => document.getElementById(id).textContent = '—');
+                                ['rep-s-clicks','rep-s-keys','rep-s-active','rep-s-pct'].forEach(id => document.getElementById(id).textContent = '—');
                                 return;
                             }
                             data.sort((a, b) => b.totalClicks - a.totalClicks);
                             const totC = data.reduce((s, m) => s + m.totalClicks, 0);
+                            const totK = data.reduce((s, m) => s + (m.totalKeys || 0), 0);
                             const totA = data.reduce((s, m) => s + m.totalActiveSec, 0);
                             const totI = data.reduce((s, m) => s + m.totalInactiveSec, 0);
                             const pct  = totA + totI > 0 ? Math.round(totA / (totA + totI) * 100) : 0;
                             document.getElementById('rep-s-clicks').textContent = totC.toLocaleString('ru');
+                            document.getElementById('rep-s-keys').textContent   = totK.toLocaleString('ru');
                             document.getElementById('rep-s-active').textContent = fmt(totA);
                             document.getElementById('rep-s-pct').textContent    = pct + '%';
                             const maxC = data[0].totalClicks || 1;
@@ -351,6 +360,7 @@ namespace MouseClickServer
                                 return `<tr>
                                     <td>${nm}<div class="rep-bar"><div class="rep-bar-fill" style="width:${(m.totalClicks/maxC*100).toFixed(1)}%"></div></div></td>
                                     <td class="num">${m.totalClicks.toLocaleString('ru')}</td>
+                                    <td class="num">${(m.totalKeys || 0).toLocaleString('ru')}</td>
                                     <td class="num">${fmt(m.totalActiveSec)}</td>
                                     <td class="num">${fmt(m.totalInactiveSec)}</td>
                                     <td class="num">${mp}%</td>
@@ -361,6 +371,7 @@ namespace MouseClickServer
                                 <thead><tr>
                                     <th>Сотрудник</th>
                                     <th class="num">Кликов</th>
+                                    <th class="num">Клавиш</th>
                                     <th class="num">Активно</th>
                                     <th class="num">Неактивно</th>
                                     <th class="num">% акт.</th>
@@ -369,6 +380,7 @@ namespace MouseClickServer
                                 <tr class="rep-total">
                                     <td>Итого <span style="font-weight:400;color:#aaa;font-size:0.8rem">${n} клиент${s}</span></td>
                                     <td class="num">${totC.toLocaleString('ru')}</td>
+                                    <td class="num">${totK.toLocaleString('ru')}</td>
                                     <td class="num">${fmt(totA)}</td>
                                     <td class="num">${fmt(totI)}</td>
                                     <td class="num">${pct}%</td>
@@ -453,6 +465,7 @@ namespace MouseClickServer
                                 </div>
                                 <div class="metrics">
                                     <div class="metric clicks"><div class="m-label">Кликов</div><div class="m-value">${m.totalClicks.toLocaleString('ru')}</div></div>
+                                    <div class="metric keys"><div class="m-label">Клавиш</div><div class="m-value">${(m.totalKeys || 0).toLocaleString('ru')}</div></div>
                                     <div class="metric active"><div class="m-label">Актив.</div><div class="m-value">${fmt(m.activeSeconds)}</div></div>
                                     <div class="metric inactive"><div class="m-label">Неактив.</div><div class="m-value">${fmt(m.inactiveSeconds)}</div></div>
                                 </div>
@@ -640,7 +653,8 @@ namespace MouseClickServer
                     function getActivityStatus(m) {
                         const age = (Date.now() - new Date(m.lastSeen)) / 1000;
                         if (age >= 600) return 'offline';
-                        if (m.recentClicks > 0 && age < 150) return 'online';
+                        const recent = (m.recentClicks || 0) + (m.recentKeys || 0);
+                        if (recent > 0 && age < 150) return 'online';
                         return 'away';
                     }
 
@@ -707,10 +721,12 @@ namespace MouseClickServer
                             const machines = await (await fetch('/api/machines')).json();
                             const online      = machines.filter(m => getStatus(m.lastSeen) === 'online').length;
                             const totalClicks = machines.reduce((s, m) => s + m.totalClicks, 0);
+                            const totalKeys   = machines.reduce((s, m) => s + (m.totalKeys || 0), 0);
                             const totalActive = machines.reduce((s, m) => s + m.activeSeconds, 0);
                             document.getElementById('s-machines').textContent = machines.length;
                             document.getElementById('s-online').textContent   = online;
                             document.getElementById('s-clicks').textContent   = totalClicks.toLocaleString('ru');
+                            document.getElementById('s-keys').textContent     = totalKeys.toLocaleString('ru');
                             document.getElementById('s-active').textContent   = fmt(totalActive);
                             document.getElementById('grid').innerHTML = machines.length
                                 ? machines.map(renderCard).join('')

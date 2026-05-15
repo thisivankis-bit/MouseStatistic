@@ -52,6 +52,7 @@ public sealed class WebServer : IDisposable
             var json = JsonSerializer.Serialize(new
             {
                 count            = _store.Load(),
+                keys             = _store.LoadKeys(),
                 active_seconds   = _activity.ActiveSeconds,
                 inactive_seconds = _activity.InactiveSeconds,
                 app_process      = procName,
@@ -132,19 +133,26 @@ public sealed class WebServer : IDisposable
                     image-rendering: crisp-edges;
                 }
                 .count {
-                    font-size: 2rem;
+                    font-size: 1.5rem;
                     color: #ffffff;
                     line-height: 1;
-                    margin-bottom: 6px;
+                    margin-bottom: 4px;
                     transition: color 0.1s;
                 }
                 .count.flash { color: #818cf8; }
                 .count-sub {
-                    font-size: 0.38rem;
+                    font-size: 0.32rem;
                     color: #4f46e5;
                     letter-spacing: 0.12em;
-                    margin-bottom: 22px;
+                    margin-bottom: 12px;
                 }
+                .counts {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin-bottom: 18px;
+                }
+                .count-cell { text-align: center; }
                 .stats {
                     display: grid;
                     grid-template-columns: 1fr 1fr;
@@ -253,8 +261,16 @@ public sealed class WebServer : IDisposable
             <div class="panel">
                 <div class="panel-title">Mouse Tracker</div>
                 <canvas id="cv"></canvas>
-                <div class="count" id="count">—</div>
-                <div class="count-sub">кликов</div>
+                <div class="counts">
+                    <div class="count-cell">
+                        <div class="count" id="count">—</div>
+                        <div class="count-sub">кликов</div>
+                    </div>
+                    <div class="count-cell">
+                        <div class="count" id="keys">—</div>
+                        <div class="count-sub">клавиш</div>
+                    </div>
+                </div>
                 <div class="stats">
                     <div class="stat active">
                         <div class="stat-label">Активно</div>
@@ -353,7 +369,9 @@ public sealed class WebServer : IDisposable
 
             // --- Stats ---
             let prevCount = null;
+            let prevKeys  = null;
             const elCount    = document.getElementById('count');
+            const elKeys     = document.getElementById('keys');
             const elActive   = document.getElementById('active');
             const elInactive = document.getElementById('inactive');
             const elAppName  = document.getElementById('app-name');
@@ -392,6 +410,7 @@ public sealed class WebServer : IDisposable
                     const r = await fetch('/api/stats');
                     const d = await r.json();
                     elCount.textContent    = d.count.toLocaleString('ru');
+                    elKeys.textContent     = (d.keys ?? 0).toLocaleString('ru');
                     elActive.textContent   = fmt(d.active_seconds);
                     elInactive.textContent = fmt(d.inactive_seconds);
                     elAppName.textContent  = d.app_process || '—';
@@ -401,7 +420,12 @@ public sealed class WebServer : IDisposable
                         setTimeout(() => elCount.classList.remove('flash'), 130);
                         triggerClick();
                     }
+                    if (prevKeys !== null && d.keys !== prevKeys) {
+                        elKeys.classList.add('flash');
+                        setTimeout(() => elKeys.classList.remove('flash'), 130);
+                    }
                     prevCount = d.count;
+                    prevKeys  = d.keys;
                     renderApps(d.app_stats);
                 } catch(e) {}
             }

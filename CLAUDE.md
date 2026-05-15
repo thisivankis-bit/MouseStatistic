@@ -47,6 +47,10 @@ MouseHook (WinAPI WH_MOUSE_LL)
   ├── Clicked  →  [IsInWorkHours check] → DataStore.Increment()
   └── Activity →  ActivityTracker.RegisterActivity()
 
+KeyboardHook (WinAPI WH_KEYBOARD_LL)
+  ├── Pressed  →  [IsInWorkHours check] → DataStore.IncrementKey()  (counts WM_KEYDOWN/WM_SYSKEYDOWN, including auto-repeat)
+  └── Activity →  ActivityTracker.RegisterActivity()
+
 ActivityTracker (1-second timer)
   ├── classifies each second as active/inactive (threshold: 5s since last activity)
   ├── calls ForegroundApp.Get() each tick to track per-app time
@@ -54,15 +58,15 @@ ActivityTracker (1-second timer)
 
 DataStore (SQLite via Microsoft.Data.Sqlite)
   └── %LocalAppData%\MouseClickTracker\data.db
-      Tables: counter(total, active_seconds, inactive_seconds)
+      Tables: counter(total, key_total, active_seconds, inactive_seconds)
               app_stats(process_name, seconds)
 
 WebServer (HttpListener on :5000)
   ├── GET /          — embedded HTML dashboard (updates every 1s)
-  └── GET /api/stats — JSON snapshot from DataStore + ActivityTracker
+  └── GET /api/stats — JSON snapshot from DataStore + ActivityTracker (includes `keys`)
 
 SyncService (optional, 1-minute timer) — only created when ServerUrl is set
-  ├── POST /api/sync → MouseClickServer  (sends clicks, activity, app stats, userName)
+  ├── POST /api/sync → MouseClickServer  (sends clicks, keys, activity, app stats, userName)
   └── GET  /api/config ← MouseClickServer  (receives workStart, workEnd, resetTime)
        └── calls OnConfigReceived() callback → updates MainForm fields
 
@@ -86,7 +90,7 @@ ResetTimer (30-second timer, always active)
 
 **Schedule (server-driven)**: `_workStart`, `_workEnd`, `_resetTime` are in-memory fields in `MainForm`, set by the `SyncService` callback. `_labelSchedule` shows the current received schedule (blue = active, gray = not configured).
 
-**Reset behaviour**: `DataStore.Reset()` zeroes `total`, `active_seconds`, `inactive_seconds`, and deletes all `app_stats` rows. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together. There is no manual reset in the UI — reset only happens via the server-driven schedule (`CheckReset`).
+**Reset behaviour**: `DataStore.Reset()` zeroes `total`, `key_total`, `active_seconds`, `inactive_seconds`, and deletes all `app_stats` rows. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together. There is no manual reset in the UI — reset only happens via the server-driven schedule (`CheckReset`).
 
 ## Server Architecture (`MouseClickServer`)
 
@@ -103,13 +107,13 @@ GET  /             — embedded HTML dashboard (4 tabs, 30s poll)
 
 **Database**: `%ProgramData%\MouseClickServer\server.db`
 ```
-machines(machine_id PK, user_name, last_seen, total_clicks, active_seconds, inactive_seconds, recent_clicks)
+machines(machine_id PK, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys)
 machine_app_stats(machine_id, process_name, seconds — composite PK)
-machine_daily(machine_id, day YYYY-MM-DD, clicks, active_sec, inactive_sec — composite PK)
+machine_daily(machine_id, day YYYY-MM-DD, clicks, keys, active_sec, inactive_sec — composite PK)
 settings(key PK, value)   ← stores work_start / work_end / reset_time
 ```
 
-**`recent_clicks`**: filled on every sync with the delta since the previous sync (`new - prev`, or `new` if a reset occurred). Used by the dashboard office tab to decide whether to show a character as dancing (clicking) vs sleeping (idle).
+**`recent_clicks` / `recent_keys`**: filled on every sync with the delta since the previous sync (`new - prev`, or `new` if a reset occurred). The office tab considers a client "online" (clicking/typing) when `recent_clicks + recent_keys > 0` within the last 150s, otherwise "away".
 
 **Daily history**: on each sync, `Upsert()` reads the previous snapshot, computes click/time deltas, and upserts into `machine_daily` (local server date). When a reset is detected (`new < prev`), today's `machine_daily` row is zeroed before accumulating new deltas — this keeps the Reports tab consistent with the Statistics tab (both reflect only post-reset activity).
 
@@ -119,7 +123,7 @@ Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in
 
 Four tabs rendered as a single `const string` HTML page:
 
-- **Статистика** — card grid per machine: clicks, active/inactive time, top-5 apps, status dot
+- **Статистика** — card grid per machine: clicks, keys, active/inactive time, top-5 apps, status dot
 - **Офис** — animated character canvas (`<canvas id="office-cv">`), one character per connected client, RAF loop
 - **Отчёты** — period statistics: date-range picker with quick buttons, summary cards, per-client table with inline bars
 - **Расписание** — `<input type="time">` fields for work hours and auto-reset, saved via `POST /api/config`
@@ -129,7 +133,7 @@ Four tabs rendered as a single `const string` HTML page:
 - **away** → `_drawMarioIdle` — crouching Mario (16×12 px sprites, scale 4), rising Zzz bubbles
 - **offline** → `_drawBoo` — procedural Boo ghost (Mario universe), angry brows, fangs, stubby arms
 
-Conditions: `online` = `recentClicks > 0 && age < 150s`; `away` = connected but no clicks (`age < 600s`); `offline` = `age ≥ 600s`.
+Conditions: `online` = `(recentClicks + recentKeys) > 0 && age < 150s`; `away` = connected but no input (`age < 600s`); `offline` = `age ≥ 600s`.
 
 **Pixel sprite system**: sprites are defined in `const _SP` as arrays of 16-char strings; chars map to colors via `const _mCol` (`r`=red, `s`=skin, `b`=brown, `u`=blue, `0`=transparent). Drawn by `_sprite(ctx, ox, oy, rows, sc, pal)` using `fillRect` per pixel.
 

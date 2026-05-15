@@ -22,7 +22,8 @@ public sealed class DataStore : IDisposable
             CREATE TABLE IF NOT EXISTS counter (
                 total            INTEGER NOT NULL DEFAULT 0,
                 active_seconds   INTEGER NOT NULL DEFAULT 0,
-                inactive_seconds INTEGER NOT NULL DEFAULT 0
+                inactive_seconds INTEGER NOT NULL DEFAULT 0,
+                key_total        INTEGER NOT NULL DEFAULT 0
             );
             INSERT INTO counter (total) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM counter);
             CREATE TABLE IF NOT EXISTS app_stats (
@@ -38,7 +39,7 @@ public sealed class DataStore : IDisposable
     private void Migrate()
     {
         // добавляем колонки в существующие БД без них
-        foreach (var col in new[] { "active_seconds", "inactive_seconds" })
+        foreach (var col in new[] { "active_seconds", "inactive_seconds", "key_total" })
         {
             try
             {
@@ -78,6 +79,26 @@ public sealed class DataStore : IDisposable
         {
             using var cmd = _conn.CreateCommand();
             cmd.CommandText = "UPDATE counter SET total = total + 1";
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    public int LoadKeys()
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT key_total FROM counter LIMIT 1";
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
+    }
+
+    public void IncrementKey()
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "UPDATE counter SET key_total = key_total + 1";
             cmd.ExecuteNonQuery();
         }
     }
@@ -139,7 +160,7 @@ public sealed class DataStore : IDisposable
         {
             using var cmd = _conn.CreateCommand();
             cmd.CommandText = """
-                UPDATE counter SET total = 0, active_seconds = 0, inactive_seconds = 0;
+                UPDATE counter SET total = 0, active_seconds = 0, inactive_seconds = 0, key_total = 0;
                 DELETE FROM app_stats;
                 """;
             cmd.ExecuteNonQuery();

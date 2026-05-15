@@ -42,6 +42,7 @@ public sealed class SyncService : IDisposable
                 machineId       = _machineId,
                 userName        = _userName,
                 totalClicks     = _store.Load(),
+                totalKeys       = _store.LoadKeys(),
                 activeSeconds   = _activity.ActiveSeconds,
                 inactiveSeconds = _activity.InactiveSeconds,
                 appStats        = _store.LoadAppStats()
