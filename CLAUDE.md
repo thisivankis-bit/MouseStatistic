@@ -118,15 +118,18 @@ GET  /             — embedded HTML dashboard (4 tabs, 30s poll)
 
 **Database**: `%ProgramData%\MouseClickServer\server.db`
 ```
-machines(machine_id PK, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys)
+machines(machine_id PK, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys, wins)
 machine_app_stats(machine_id, process_name, seconds — composite PK)
 machine_daily(machine_id, day YYYY-MM-DD, clicks, keys, active_sec, inactive_sec — composite PK)
+daily_winner(day PK, machine_id)   ← one row per day, set on first machine to cross DailyWinTarget
 settings(key PK, value)   ← stores work_start / work_end / reset_time
 ```
 
 **`recent_clicks` / `recent_keys`**: filled on every sync with the delta since the previous sync (`new - prev`, or `new` if a reset occurred). The office tab considers a client "online" (clicking/typing) when `recent_clicks + recent_keys > 0` within the last 150s, otherwise "away".
 
 **Daily history**: on each sync, `Upsert()` reads the previous snapshot, computes click/time deltas, and upserts into `machine_daily` (local server date). When a reset is detected (`new < prev`), today's `machine_daily` row is zeroed before accumulating new deltas — this keeps the Reports tab consistent with the Statistics tab (both reflect only post-reset activity).
+
+**Daily winner**: after the daily upsert, if today's `machine_daily.clicks + keys` for this machine is at least `ServerDb.DailyWinTarget` (5000, must match `MARATHON_TARGET` in `Dashboard.Html`), the server does `INSERT INTO daily_winner ... ON CONFLICT(day) DO NOTHING`. If the insert actually happened (this machine was the first today), `machines.wins` is incremented by 1. The Statistics tab renders a gold star badge after the user/machine name showing the lifetime win count.
 
 Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in one transaction). Both `ServerDb` and `DataStore` run a `Migrate()` on startup to `ALTER TABLE ADD COLUMN` for backward compatibility with older databases.
 

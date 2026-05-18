@@ -48,6 +48,7 @@ app.MapGet("/api/machines", (HttpContext ctx) =>
         inactiveSeconds = m.InactiveSeconds,
         recentClicks    = m.RecentClicks,
         recentKeys      = m.RecentKeys,
+        wins            = m.Wins,
         appStats        = m.AppStats.Select(a => new { processName = a.ProcessName, seconds = a.Seconds })
     });
 });
@@ -192,6 +193,19 @@ namespace MouseClickServer
                     .machine-name { font-size: 1rem; font-weight: 600; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
                     .machine-id   { font-size: 0.7rem; color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
                     .last-seen { font-size: 0.75rem; color: #bbb; margin-left: auto; flex-shrink: 0; }
+
+                    .wins-badge {
+                        display: inline-flex; align-items: center; gap: 5px;
+                        background: radial-gradient(circle at 30% 30%, #FFEE88 0%, #F8C828 55%, #C89008 100%);
+                        color: #5C2808; font-size: 0.7rem; font-weight: 700; font-variant-numeric: tabular-nums;
+                        padding: 2px 9px 2px 6px; margin-left: 8px;
+                        border: 1.5px solid #A07800; border-radius: 12px;
+                        box-shadow: inset 0 0 0 1px rgba(255,238,136,0.5);
+                        vertical-align: middle;
+                    }
+                    .wins-badge::before {
+                        content: "★"; color: #A07800; font-size: 0.8rem; line-height: 1;
+                    }
 
                     .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
                     .metric { background: #f8f9fa; border-radius: 10px; padding: 10px 12px; }
@@ -504,12 +518,15 @@ namespace MouseClickServer
                             </div>`).join('');
                         const displayName = m.userName ? esc(m.userName) : esc(m.machineId);
                         const subtitle    = m.userName ? `<div class="machine-id">${esc(m.machineId)}</div>` : '';
+                        const wins        = m.wins > 0
+                            ? `<span class="wins-badge" title="Побед в дневном марафоне">${m.wins}</span>`
+                            : '';
                         return `
                             <div class="machine-card">
                                 <div class="machine-header">
                                     <div class="status-dot status-${st}"></div>
                                     <div class="machine-name-block">
-                                        <div class="machine-name">${displayName}</div>
+                                        <div class="machine-name">${displayName}${wins}</div>
                                         ${subtitle}
                                     </div>
                                     <div class="last-seen">${relTime(m.lastSeen)}</div>

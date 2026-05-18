@@ -14,6 +14,7 @@ public record MachineSnapshot(
     long InactiveSeconds,
     long RecentClicks,
     long RecentKeys,
+    long Wins,
     List<AppStat> AppStats);
 
 public record DailyEntry(string Day, long Clicks, long Keys, long ActiveSec, long InactiveSec);
@@ -29,6 +30,10 @@ public record PeriodMachineStat(
 
 public sealed class ServerDb : IDisposable
 {
+    // Combined clicks+keys threshold for "first to finish today" → daily winner bonus.
+    // Must match MARATHON_TARGET in Dashboard.Html.
+    private const long DailyWinTarget = 5000;
+
     private static readonly string DbPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
         "MouseClickServer", "server.db");
@@ -60,7 +65,13 @@ public sealed class ServerDb : IDisposable
                 active_seconds    INTEGER NOT NULL DEFAULT 0,
                 inactive_seconds  INTEGER NOT NULL DEFAULT 0,
                 recent_clicks     INTEGER NOT NULL DEFAULT 0,
-                recent_keys       INTEGER NOT NULL DEFAULT 0
+                recent_keys       INTEGER NOT NULL DEFAULT 0,
+                wins              INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_winner (
+                day        TEXT PRIMARY KEY,
+                machine_id TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS machine_app_stats (
@@ -94,6 +105,7 @@ public sealed class ServerDb : IDisposable
             "ALTER TABLE machines      ADD COLUMN recent_clicks INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE machines      ADD COLUMN total_keys    INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE machines      ADD COLUMN recent_keys   INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE machines      ADD COLUMN wins          INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE machine_daily ADD COLUMN keys          INTEGER NOT NULL DEFAULT 0",
         })
         {
@@ -186,9 +198,9 @@ public sealed class ServerDb : IDisposable
             }
 
             // Accumulate daily activity
+            var today = DateTime.Now.ToString("yyyy-MM-dd");
             if (dClicks > 0 || dKeys > 0 || dActive > 0 || dInactive > 0)
             {
-                var today = DateTime.Now.ToString("yyyy-MM-dd");
                 var d = _conn.CreateCommand();
                 d.Transaction = tx;
                 d.CommandText = """
@@ -211,6 +223,35 @@ public sealed class ServerDb : IDisposable
                 d.ExecuteNonQuery();
             }
 
+            // Daily winner: first machine whose today's clicks+keys cross the target gets +1 win.
+            long todayClicks = 0, todayKeys = 0;
+            using (var q = _conn.CreateCommand())
+            {
+                q.Transaction = tx;
+                q.CommandText = "SELECT clicks, keys FROM machine_daily WHERE machine_id = $id AND day = $day";
+                q.Parameters.AddWithValue("$id",  payload.MachineId);
+                q.Parameters.AddWithValue("$day", today);
+                using var qr = q.ExecuteReader();
+                if (qr.Read()) { todayClicks = qr.GetInt64(0); todayKeys = qr.GetInt64(1); }
+            }
+            if (todayClicks + todayKeys >= DailyWinTarget)
+            {
+                var insertWinner = _conn.CreateCommand();
+                insertWinner.Transaction = tx;
+                insertWinner.CommandText = "INSERT INTO daily_winner (day, machine_id) VALUES ($day, $id) ON CONFLICT(day) DO NOTHING";
+                insertWinner.Parameters.AddWithValue("$day", today);
+                insertWinner.Parameters.AddWithValue("$id",  payload.MachineId);
+                var inserted = insertWinner.ExecuteNonQuery();
+                if (inserted > 0)
+                {
+                    var bump = _conn.CreateCommand();
+                    bump.Transaction = tx;
+                    bump.CommandText = "UPDATE machines SET wins = wins + 1 WHERE machine_id = $id";
+                    bump.Parameters.AddWithValue("$id", payload.MachineId);
+                    bump.ExecuteNonQuery();
+                }
+            }
+
             tx.Commit();
         }
     }
@@ -222,7 +263,7 @@ public sealed class ServerDb : IDisposable
             var machines = new List<MachineSnapshot>();
 
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "SELECT machine_id, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys FROM machines ORDER BY last_seen DESC";
+            cmd.CommandText = "SELECT machine_id, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys, wins FROM machines ORDER BY last_seen DESC";
             using var r = cmd.ExecuteReader();
 
             while (r.Read())
@@ -236,6 +277,7 @@ public sealed class ServerDb : IDisposable
                     r.GetInt64(3), r.GetInt64(4),
                     r.GetInt64(5), r.GetInt64(6),
                     r.GetInt64(7), r.GetInt64(8),
+                    r.GetInt64(9),
                     apps));
             }
 
