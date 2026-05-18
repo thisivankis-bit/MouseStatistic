@@ -679,6 +679,40 @@ namespace MouseClickServer
                         ctx.beginPath(); ctx.arc(x, y, 5 * pulse, 0, Math.PI * 2); ctx.stroke();
                     }
 
+                    function _drawScoreBadge(ctx, cx, cy, score, status) {
+                        const text = score.toLocaleString('ru');
+                        ctx.font = 'bold 13px "Segoe UI",sans-serif';
+                        const tw = ctx.measureText(text).width;
+                        const padL = 24, padR = 12, h = 20;
+                        const w = padL + tw + padR;
+                        const x = Math.round(cx - w / 2);
+                        const y = Math.round(cy - h / 2);
+                        const bg = status === 'offline' ? 'rgba(70,70,90,0.92)'
+                                 : status === 'online'  ? 'rgba(20,90,40,0.92)'
+                                                        : 'rgba(120,72,24,0.92)';
+                        ctx.fillStyle = bg;
+                        if (ctx.roundRect) {
+                            ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill();
+                        } else {
+                            ctx.fillRect(x, y, w, h);
+                        }
+                        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+                        if (ctx.roundRect) {
+                            ctx.beginPath(); ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, h / 2); ctx.stroke();
+                        }
+                        const coinX = x + 12, coinY = y + h / 2;
+                        ctx.fillStyle = '#F8C828';
+                        ctx.beginPath(); ctx.arc(coinX, coinY, 6, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#FFEE88';
+                        ctx.beginPath(); ctx.arc(coinX - 1.5, coinY - 1.5, 2, 0, Math.PI * 2); ctx.fill();
+                        ctx.strokeStyle = '#A07800'; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.arc(coinX, coinY, 6, 0, Math.PI * 2); ctx.stroke();
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                        ctx.fillText(text, x + padL, y + h / 2 + 1);
+                        ctx.textBaseline = 'alphabetic';
+                    }
+
                     function _drawMarathonRunner(ctx, cx, groundY, tick, idle) {
                         const sc = 3;
                         const fr = idle
@@ -779,11 +813,9 @@ namespace MouseClickServer
                             ctx.textAlign = 'center';
                             ctx.font = 'bold 11px "Segoe UI",sans-serif';
                             ctx.fillStyle = offline ? '#404060' : '#0a0a3a';
-                            ctx.fillText(nm, next, groundY - 58);
-                            ctx.font = '10px "Segoe UI",sans-serif';
-                            ctx.fillStyle = offline ? '#808090' : (r.status === 'online' ? '#16a34a' : '#806020');
-                            ctx.fillText(todayScore.toLocaleString('ru'), next, groundY - 46);
+                            ctx.fillText(nm, next, groundY - 74);
                             ctx.textAlign = 'left';
+                            _drawScoreBadge(ctx, next, groundY - 58, todayScore, r.status);
                             ctx.restore();
                         }
                     }
