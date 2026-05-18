@@ -752,14 +752,13 @@ namespace MouseClickServer
                             return;
                         }
 
-                        // runners: hide offline, sort by progress so leaders draw on top
+                        // runners: offline are faded but still on the track; leaders draw on top
                         const ranked = machines
                             .map(m => ({
                                 m,
                                 progress: Math.min(1, ((m.totalClicks || 0) + (m.totalKeys || 0)) / MARATHON_TARGET),
                                 status:   getActivityStatus(m)
                             }))
-                            .filter(r => r.status !== 'offline')
                             .sort((a, b) => a.progress - b.progress);
 
                         for (const r of ranked) {
@@ -769,6 +768,9 @@ namespace MouseClickServer
                             const next = cur === undefined ? targetX : cur + (targetX - cur) * 0.06;
                             _marathonPos.set(id, next);
 
+                            const offline = r.status === 'offline';
+                            ctx.save();
+                            if (offline) ctx.globalAlpha = 0.4;
                             _drawMarathonRunner(ctx, next, groundY, tick, r.status !== 'online');
 
                             const todayScore = (r.m.totalClicks || 0) + (r.m.totalKeys || 0);
@@ -776,12 +778,13 @@ namespace MouseClickServer
 
                             ctx.textAlign = 'center';
                             ctx.font = 'bold 11px "Segoe UI",sans-serif';
-                            ctx.fillStyle = '#0a0a3a';
+                            ctx.fillStyle = offline ? '#404060' : '#0a0a3a';
                             ctx.fillText(nm, next, groundY - 58);
                             ctx.font = '10px "Segoe UI",sans-serif';
-                            ctx.fillStyle = r.status === 'online' ? '#16a34a' : '#806020';
+                            ctx.fillStyle = offline ? '#808090' : (r.status === 'online' ? '#16a34a' : '#806020');
                             ctx.fillText(todayScore.toLocaleString('ru'), next, groundY - 46);
                             ctx.textAlign = 'left';
+                            ctx.restore();
                         }
                     }
 
