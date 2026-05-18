@@ -11,6 +11,19 @@ public class AppConfig
     public string ResolvedMachineId =>
         string.IsNullOrWhiteSpace(MachineId) ? Environment.MachineName : MachineId;
 
+    public string ResolvedServerUrl
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ServerUrl)) return "";
+            var u = ServerUrl.Trim();
+            if (!u.StartsWith("http://",  StringComparison.OrdinalIgnoreCase) &&
+                !u.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                u = "http://" + u;
+            return u;
+        }
+    }
+
     private static readonly string ConfigPath =
         Path.Combine(AppContext.BaseDirectory, "appsettings.json");
 

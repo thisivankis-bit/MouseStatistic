@@ -80,7 +80,7 @@ public class MainForm : Form
 
         var cfg = AppConfig.Load();
         if (!string.IsNullOrWhiteSpace(cfg.ServerUrl))
-            _sync = new SyncService(_store, _activity, cfg.ServerUrl, cfg.ResolvedMachineId, cfg.UserName,
+            _sync = new SyncService(_store, _activity, cfg.ResolvedServerUrl, cfg.ResolvedMachineId, cfg.UserName,
                 OnConfigReceived);
         _resetTimer = new System.Threading.Timer(CheckReset, null, 0, 30_000);
 
@@ -122,7 +122,7 @@ public class MainForm : Form
             _sync?.Dispose();
             _sync = string.IsNullOrWhiteSpace(current.ServerUrl)
                 ? null
-                : new SyncService(_store, _activity, current.ServerUrl, current.ResolvedMachineId, current.UserName,
+                : new SyncService(_store, _activity, current.ResolvedServerUrl, current.ResolvedMachineId, current.UserName,
                     OnConfigReceived);
         };
 
