@@ -1,5 +1,5 @@
 #define AppName "Mouse Click Tracker"
-#define AppVersion "1.1.0"
+#define AppVersion "1.1.1"
 #define AppExe "MouseClickTracker.exe"
 #define PublishDir "..\publish"
 

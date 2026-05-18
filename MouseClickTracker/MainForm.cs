@@ -69,7 +69,15 @@ public class MainForm : Form
         Font      = new Font("Segoe UI", 7.5f),
         ForeColor = Color.Gray,
         AutoSize  = true,
-        Location  = new Point(12, 175)
+        Location  = new Point(12, 170)
+    };
+
+    private readonly Label _labelMachineInfo = new()
+    {
+        Font      = new Font("Segoe UI", 7.5f),
+        ForeColor = Color.Silver,
+        AutoSize  = true,
+        Location  = new Point(12, 188)
     };
 
     private readonly NotifyIcon _tray;
@@ -104,7 +112,7 @@ public class MainForm : Form
         _tray.DoubleClick += (_, _) => ShowWindow();
 
         Text = "Mouse Click Tracker";
-        Size = new Size(400, 220);
+        Size = new Size(400, 240);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -114,6 +122,7 @@ public class MainForm : Form
         _lastResetDate   = _store.LoadLastResetDate();
         _labelCount.Text    = _clickCount.ToString();
         _labelKeyCount.Text = _keyCount.ToString();
+        UpdateMachineInfoLabel(cfg);
 
         _btnSettings.Click += (_, _) =>
         {
@@ -138,10 +147,11 @@ public class MainForm : Form
                     OnConfigReceived);
                 _updater = new UpdaterService(current.ResolvedServerUrl);
             }
+            UpdateMachineInfoLabel(current);
         };
 
         UpdateScheduleLabel();
-        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _labelKeyTitle, _labelKeyCount, _btnSettings, _labelSchedule });
+        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _labelKeyTitle, _labelKeyCount, _btnSettings, _labelSchedule, _labelMachineInfo });
 
         _hook.Clicked  += OnClicked;
         _hook.Activity += (_, _) => _activity.RegisterActivity();
@@ -161,6 +171,13 @@ public class MainForm : Form
         _resetTime = reset;
         if (IsHandleCreated)
             BeginInvoke(UpdateScheduleLabel);
+    }
+
+    private void UpdateMachineInfoLabel(AppConfig cfg)
+    {
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?";
+        var user    = string.IsNullOrWhiteSpace(cfg.UserName) ? "—" : cfg.UserName;
+        _labelMachineInfo.Text = $"{cfg.ResolvedMachineId} · {user} · v{version}";
     }
 
     private void UpdateScheduleLabel()
