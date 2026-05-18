@@ -128,16 +128,20 @@ Each sync **replaces** the machine's app_stats rows entirely (DELETE + INSERT in
 Four tabs rendered as a single `const string` HTML page:
 
 - **Статистика** — card grid per machine: clicks, keys, active/inactive time, top-5 apps, status dot
-- **Офис** — animated character canvas (`<canvas id="office-cv">`), one character per connected client, RAF loop
+- **Офис** — animated daily marathon canvas (`<canvas id="office-cv">`): all Marios on one shared World 1-1 track, X-position = today's `totalClicks + totalKeys` normalized to `MARATHON_TARGET`, flagpole + castle at the finish line, RAF loop
 - **Отчёты** — period statistics: date-range picker with quick buttons, summary cards, per-client table with inline bars
 - **Расписание** — `<input type="time">` fields for work hours and auto-reset, saved via `POST /api/config`
 
-**Office character states** (function `getActivityStatus(m)`, separate from `getStatus()`):
-- **online** → `_drawMarioActive` — 2-frame running Mario (16×14 px sprites, scale 4), floating coins
-- **away** → `_drawMarioIdle` — crouching Mario (16×12 px sprites, scale 4), rising Zzz bubbles
-- **offline** → `_drawBoo` — procedural Boo ghost (Mario universe), angry brows, fangs, stubby arms
+**Marathon runner state** (function `getActivityStatus(m)`, separate from `getStatus()`):
+- **online** → 2-frame running Mario (`_SP.runA`/`runB`, scale 3), bobbing
+- **away**   → standing Mario (`_SP.stand`, scale 3), no animation
+- **offline** → hidden from the track; only counted in the top-right "Не на связи" badge
 
 Conditions: `online` = `(recentClicks + recentKeys) > 0 && age < 150s`; `away` = connected but no input (`age < 600s`); `offline` = `age ≥ 600s`.
+
+**Position smoothing**: `_marathonPos: Map<machineId, x>` keeps the current visual X per runner and lerps toward `targetX` (`trackLeft + progress * trackWidth`) at factor `0.06` each RAF frame, so the 30-s poll cycle doesn't cause Mario teleports.
+
+**Scene primitives** (all in `Dashboard.Html`): `_drawSky`, `_drawClouds`, `_drawHills`, `_drawGround`, `_drawQuestionBlock`, `_drawPipe`, `_drawFlagpole`, `_drawCastle`, `_drawCoin`, `_drawMarathonRunner`. Tunable constant: `MARATHON_TARGET` (combined events to reach the flagpole; currently 5000).
 
 **Pixel sprite system**: sprites are defined in `const _SP` as arrays of 16-char strings; chars map to colors via `const _mCol` (`r`=red, `s`=skin, `b`=brown, `u`=blue, `0`=transparent). Drawn by `_sprite(ctx, ox, oy, rows, sc, pal)` using `fillRect` per pixel.
 
