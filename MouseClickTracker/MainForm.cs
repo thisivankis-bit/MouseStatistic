@@ -8,6 +8,7 @@ public class MainForm : Form
     private readonly WebServer _web;
     private readonly ActivityTracker _activity;
     private SyncService? _sync;
+    private UpdaterService? _updater;
     private System.Threading.Timer? _resetTimer;
     private string _workStart = "";
     private string _workEnd   = "";
@@ -81,8 +82,11 @@ public class MainForm : Form
 
         var cfg = AppConfig.Load();
         if (!string.IsNullOrWhiteSpace(cfg.ServerUrl))
+        {
             _sync = new SyncService(_store, _activity, cfg.ResolvedServerUrl, cfg.ResolvedMachineId, cfg.UserName,
                 OnConfigReceived);
+            _updater = new UpdaterService(cfg.ResolvedServerUrl);
+        }
         _resetTimer = new System.Threading.Timer(CheckReset, null, 0, 30_000);
 
         var trayMenu = new ContextMenuStrip();
@@ -122,10 +126,18 @@ public class MainForm : Form
             current.Save();
 
             _sync?.Dispose();
-            _sync = string.IsNullOrWhiteSpace(current.ServerUrl)
-                ? null
-                : new SyncService(_store, _activity, current.ResolvedServerUrl, current.ResolvedMachineId, current.UserName,
+            _updater?.Dispose();
+            if (string.IsNullOrWhiteSpace(current.ServerUrl))
+            {
+                _sync    = null;
+                _updater = null;
+            }
+            else
+            {
+                _sync = new SyncService(_store, _activity, current.ResolvedServerUrl, current.ResolvedMachineId, current.UserName,
                     OnConfigReceived);
+                _updater = new UpdaterService(current.ResolvedServerUrl);
+            }
         };
 
         UpdateScheduleLabel();
@@ -240,6 +252,7 @@ public class MainForm : Form
         _kbHook.Dispose();
         _resetTimer?.Dispose();
         _sync?.Dispose();
+        _updater?.Dispose();
         _activity.Dispose();
         _web.Dispose();
         _store.Dispose();

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.Extensions.FileProviders;
 using MouseClickServer;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -5,6 +7,21 @@ builder.Host.UseWindowsService(o => o.ServiceName = "MouseClickServer");
 var app = builder.Build();
 
 var db = new ServerDb();
+
+// Directory where the admin drops the latest client installer + latest.json manifest.
+var downloadsPath = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+    "MouseClickServer", "downloads");
+Directory.CreateDirectory(downloadsPath);
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider      = new PhysicalFileProvider(downloadsPath),
+    RequestPath       = "/downloads",
+    ServeUnknownFileTypes = true,
+    DefaultContentType    = "application/octet-stream",
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers["Cache-Control"] = "no-cache"
+});
 
 app.MapPost("/api/sync", async (HttpContext ctx) =>
 {
@@ -69,6 +86,28 @@ app.MapGet("/api/stats", (string? from, string? to) =>
     });
 });
 
+app.MapGet("/api/version", () =>
+{
+    var manifestPath = Path.Combine(downloadsPath, "latest.json");
+    if (!File.Exists(manifestPath))
+        return Results.Ok(new { version = "0.0.0", fileName = (string?)null });
+    try
+    {
+        var json = File.ReadAllText(manifestPath);
+        var info = JsonSerializer.Deserialize<VersionManifest>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        return Results.Ok(new
+        {
+            version  = info?.Version  ?? "0.0.0",
+            fileName = info?.FileName ?? "MouseClickTracker-Setup.exe"
+        });
+    }
+    catch
+    {
+        return Results.Ok(new { version = "0.0.0", fileName = (string?)null });
+    }
+});
+
 app.MapGet("/", () => Results.Content(Dashboard.Html, "text/html; charset=utf-8"));
 
 app.Run();
@@ -77,6 +116,7 @@ namespace MouseClickServer
 {
     public record AppStatPayload(string ProcessName, long Seconds);
     public record ConfigPayload(string? WorkStart, string? WorkEnd, string? ResetTime);
+    public record VersionManifest(string? Version, string? FileName);
 
     public record SyncPayload(
         string MachineId,

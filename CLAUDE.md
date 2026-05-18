@@ -70,6 +70,11 @@ SyncService (optional, 1-minute timer) — only created when ServerUrl is set
   └── GET  /api/config ← MouseClickServer  (receives workStart, workEnd, resetTime)
        └── calls OnConfigReceived() callback → updates MainForm fields
 
+UpdaterService (optional, fires once 30s after start, then every 24h) — only when ServerUrl is set
+  ├── GET /api/version ← MouseClickServer  (compares server `Version` against Assembly.GetName().Version)
+  └── if newer: downloads /downloads/<fileName>, launches it `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`,
+       then Environment.Exit(0) so Inno can overwrite the running exe
+
 ResetTimer (30-second timer, always active)
   └── CheckReset() — fires DataStore.Reset() + ActivityTracker.Reset() when
       today's resetTime moment has passed and last_reset_date < today
@@ -102,10 +107,12 @@ Minimal ASP.NET Core API that runs as a Windows Service.
 
 ```
 POST /api/sync     — upserts machine snapshot; accumulates daily delta in machine_daily
-GET  /api/machines — all machine snapshots ordered by last_seen DESC
+GET  /api/machines — all machine snapshots ordered by last_seen DESC; X-Server-Time header
 GET  /api/config   — returns work_start, work_end, reset_time from settings table
 POST /api/config   — saves work_start, work_end, reset_time to settings table
 GET  /api/stats    — period statistics: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+GET  /api/version  — reads %ProgramData%\MouseClickServer\downloads\latest.json, returns { version, fileName }
+GET  /downloads/*  — static files from %ProgramData%\MouseClickServer\downloads (auto-update installer)
 GET  /             — embedded HTML dashboard (4 tabs, 30s poll)
 ```
 
@@ -153,8 +160,22 @@ Conditions: `online` = `(recentClicks + recentKeys) > 0 && age < 150s`; `away` =
 
 Both installers are Inno Setup 6 scripts in `<project>/installer/setup.iss`. Output goes to `<project>/installer/output/`.
 
-- **Client installer**: prompts for `ServerUrl` and `UserName`, writes `appsettings.json` post-install; optionally adds to Windows startup via registry `HKCU\...\Run`.
+- **Client installer**: per-user, `PrivilegesRequired=lowest`, installs to `{localappdata}\Programs\MouseClickTracker`. On first install prompts for `ServerUrl` and `UserName` and writes `appsettings.json`; on auto-update reinstalls (silent), the existing `appsettings.json` is **preserved** (the post-install only seeds the file when it doesn't exist yet). `CloseApplications=yes` lets Inno gracefully shut down the running exe during overwrite. Registers Windows startup via `HKCU\...\Run`.
 - **Server installer**: prompts for port (default 5001), writes `appsettings.json` (`Urls`), registers a Windows Service via `sc.exe`, adds a Windows Firewall inbound rule via `netsh`, and auto-starts the service. Uninstaller reverses all of this.
+
+## Releasing a new client version
+
+1. Bump `<Version>` in `MouseClickTracker/MouseClickTracker.csproj` (must be strictly greater than what currently-installed clients report).
+2. Also bump `AppVersion` in `MouseClickTracker/installer/setup.iss` to the same value (cosmetic; controls Add/Remove Programs text).
+3. `dotnet publish` + Inno Setup to produce `MouseClickTracker/installer/output/MouseClickTracker-Setup.exe`.
+4. Copy that `.exe` to `%ProgramData%\MouseClickServer\downloads\` on the server.
+5. Update (or create) `%ProgramData%\MouseClickServer\downloads\latest.json`:
+   ```json
+   { "version": "1.2.0", "fileName": "MouseClickTracker-Setup.exe" }
+   ```
+6. Within ~24h every running client will hit `/api/version`, see the higher number, fetch the installer, and silently self-replace (no UAC because installs are per-user). At startup the check fires after 30 seconds, so the first wave usually rolls out within minutes.
+
+**Migrating from the legacy admin install** (`C:\Program Files\MouseClickTracker\`): the new installer uses a different `AppId` and a per-user install path, so it will install in parallel — one of the two will need to be uninstalled manually via Add/Remove Programs once the per-user version is verified to work. After that, all future updates are silent.
 
 ## Key Patterns
 

@@ -1,22 +1,27 @@
 #define AppName "Mouse Click Tracker"
-#define AppVersion "1.0"
+#define AppVersion "1.1.0"
 #define AppExe "MouseClickTracker.exe"
 #define PublishDir "..\publish"
 
 [Setup]
+AppId={{A8B6C2D4-9F4B-4D29-9C42-1A2B3C4D5E6F}
 AppName={#AppName}
 AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
 AppPublisher=MouseClickTracker
-DefaultDirName={autopf}\MouseClickTracker
+DefaultDirName={localappdata}\Programs\MouseClickTracker
 DefaultGroupName={#AppName}
 OutputDir=output
 OutputBaseFilename=MouseClickTracker-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppName}
+CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -31,7 +36,7 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 [Icons]
 Name: "{group}\{#AppName}";         Filename: "{app}\{#AppExe}"
 Name: "{group}\Удалить {#AppName}"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+Name: "{userdesktop}\{#AppName}";   Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
@@ -41,7 +46,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
 [Run]
 Filename: "{app}\{#AppExe}"; \
   Description: "Запустить {#AppName}"; \
-  Flags: nowait postinstall skipifsilent
+  Flags: nowait postinstall
 
 [Code]
 var
@@ -66,12 +71,16 @@ begin
   if CurStep = ssPostInstall then
   begin
     ConfigPath := ExpandConstant('{app}\appsettings.json');
-    Json :=
-      '{' + #13#10 +
-      '  "ServerUrl": "' + ServerUrlPage.Values[0] + '",' + #13#10 +
-      '  "UserName": "' + ServerUrlPage.Values[1] + '",' + #13#10 +
-      '  "MachineId": ""' + #13#10 +
-      '}';
-    SaveStringToFile(ConfigPath, Json, False);
+    // Preserve existing config on silent auto-updates; only seed on first install.
+    if not FileExists(ConfigPath) then
+    begin
+      Json :=
+        '{' + #13#10 +
+        '  "ServerUrl": "' + ServerUrlPage.Values[0] + '",' + #13#10 +
+        '  "UserName": "' + ServerUrlPage.Values[1] + '",' + #13#10 +
+        '  "MachineId": ""' + #13#10 +
+        '}';
+      SaveStringToFile(ConfigPath, Json, False);
+    end;
   end;
 end;
