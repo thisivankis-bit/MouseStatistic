@@ -139,6 +139,8 @@ Four tabs rendered as a single `const string` HTML page:
 
 Conditions: `online` = `(recentClicks + recentKeys) > 0 && age < 150s`; `away` = connected but no input (`age < 600s`); `offline` = `age ≥ 600s`.
 
+**Clock skew compensation**: `age` is computed via `_ageSec(lastSeen) = (Date.now() + _skew - lastSeen) / 1000`. `_skew` is refreshed on every `/api/machines` fetch from the `X-Server-Time` response header, so a dashboard viewer whose browser clock drifts from the server (no NTP, VM time drift, etc.) still classifies machines correctly. Both `getActivityStatus` and the stats-tab `getStatus` use the same helper.
+
 **Position smoothing**: `_marathonPos: Map<machineId, x>` keeps the current visual X per runner and lerps toward `targetX` (`trackLeft + progress * trackWidth`) at factor `0.06` each RAF frame, so the 30-s poll cycle doesn't cause Mario teleports.
 
 **Scene primitives** (all in `Dashboard.Html`): `_drawSky`, `_drawClouds`, `_drawHills`, `_drawGround`, `_drawQuestionBlock`, `_drawPipe`, `_drawFlagpole`, `_drawCastle`, `_drawCoin`, `_drawMarathonRunner`. Tunable constant: `MARATHON_TARGET` (combined events to reach the flagpole; currently 5000).

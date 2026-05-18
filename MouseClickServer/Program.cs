@@ -15,19 +15,25 @@ app.MapPost("/api/sync", async (HttpContext ctx) =>
     return Results.Ok();
 });
 
-app.MapGet("/api/machines", () => db.GetAll().Select(m => new
+app.MapGet("/api/machines", (HttpContext ctx) =>
 {
-    machineId       = m.MachineId,
-    userName        = m.UserName,
-    lastSeen        = m.LastSeen,
-    totalClicks     = m.TotalClicks,
-    totalKeys       = m.TotalKeys,
-    activeSeconds   = m.ActiveSeconds,
-    inactiveSeconds = m.InactiveSeconds,
-    recentClicks    = m.RecentClicks,
-    recentKeys      = m.RecentKeys,
-    appStats        = m.AppStats.Select(a => new { processName = a.ProcessName, seconds = a.Seconds })
-}));
+    // X-Server-Time lets the dashboard compute clock skew vs the viewer's browser
+    // and apply it when classifying machines as online/away/offline.
+    ctx.Response.Headers["X-Server-Time"] = DateTime.UtcNow.ToString("o");
+    return db.GetAll().Select(m => new
+    {
+        machineId       = m.MachineId,
+        userName        = m.UserName,
+        lastSeen        = m.LastSeen,
+        totalClicks     = m.TotalClicks,
+        totalKeys       = m.TotalKeys,
+        activeSeconds   = m.ActiveSeconds,
+        inactiveSeconds = m.InactiveSeconds,
+        recentClicks    = m.RecentClicks,
+        recentKeys      = m.RecentKeys,
+        appStats        = m.AppStats.Select(a => new { processName = a.ProcessName, seconds = a.Seconds })
+    });
+});
 
 app.MapGet("/api/config", () => new
 {
@@ -427,12 +433,17 @@ namespace MouseClickServer
                     function esc(s) {
                         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
                     }
+                    // Clock skew between server and the viewer's browser, updated on every /api/machines fetch.
+                    let _skew = 0;
+                    function _ageSec(lastSeen) {
+                        return (Date.now() + _skew - new Date(lastSeen).getTime()) / 1000;
+                    }
                     function getStatus(lastSeen) {
-                        const age = (Date.now() - new Date(lastSeen)) / 1000;
+                        const age = _ageSec(lastSeen);
                         return age < 90 ? 'online' : age < 600 ? 'away' : 'offline';
                     }
                     function relTime(lastSeen) {
-                        const age = Math.floor((Date.now() - new Date(lastSeen)) / 1000);
+                        const age = Math.floor(_ageSec(lastSeen));
                         if (age < 60)   return `${age}с назад`;
                         if (age < 3600) return `${Math.floor(age/60)}м назад`;
                         return `${Math.floor(age/3600)}ч назад`;
@@ -543,7 +554,7 @@ namespace MouseClickServer
 
                     // online = activity within last 150s; away = connected, no recent input; offline = >10min
                     function getActivityStatus(m) {
-                        const age = (Date.now() - new Date(m.lastSeen)) / 1000;
+                        const age = _ageSec(m.lastSeen);
                         if (age >= 600) return 'offline';
                         const recent = (m.recentClicks || 0) + (m.recentKeys || 0);
                         if (recent > 0 && age < 150) return 'online';
@@ -838,7 +849,10 @@ namespace MouseClickServer
                     // ── Main update loop ──────────────────────────────────────
                     async function update() {
                         try {
-                            const machines = await (await fetch('/api/machines')).json();
+                            const r = await fetch('/api/machines');
+                            const st = r.headers.get('X-Server-Time');
+                            if (st) _skew = new Date(st).getTime() - Date.now();
+                            const machines = await r.json();
                             const online      = machines.filter(m => getStatus(m.lastSeen) === 'online').length;
                             const totalClicks = machines.reduce((s, m) => s + m.totalClicks, 0);
                             const totalKeys   = machines.reduce((s, m) => s + (m.totalKeys || 0), 0);
