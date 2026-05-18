@@ -1,5 +1,5 @@
 #define AppName "Mouse Click Tracker"
-#define AppVersion "1.1.1"
+#define AppVersion "1.1.2"
 #define AppExe "MouseClickTracker.exe"
 #define PublishDir "..\publish"
 
@@ -68,19 +68,17 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigPath, Json: String;
 begin
-  if CurStep = ssPostInstall then
+  if (CurStep = ssPostInstall) and (not WizardSilent()) then
   begin
+    // Interactive install — write whatever the user typed into the wizard.
+    // Silent (auto-update) installs skip this so the existing config survives.
     ConfigPath := ExpandConstant('{app}\appsettings.json');
-    // Preserve existing config on silent auto-updates; only seed on first install.
-    if not FileExists(ConfigPath) then
-    begin
-      Json :=
-        '{' + #13#10 +
-        '  "ServerUrl": "' + ServerUrlPage.Values[0] + '",' + #13#10 +
-        '  "UserName": "' + ServerUrlPage.Values[1] + '",' + #13#10 +
-        '  "MachineId": ""' + #13#10 +
-        '}';
-      SaveStringToFile(ConfigPath, Json, False);
-    end;
+    Json :=
+      '{' + #13#10 +
+      '  "ServerUrl": "' + ServerUrlPage.Values[0] + '",' + #13#10 +
+      '  "UserName": "' + ServerUrlPage.Values[1] + '",' + #13#10 +
+      '  "MachineId": ""' + #13#10 +
+      '}';
+    SaveStringToFile(ConfigPath, Json, False);
   end;
 end;
