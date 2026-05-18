@@ -58,7 +58,7 @@ ActivityTracker (1-second timer)
 
 DataStore (SQLite via Microsoft.Data.Sqlite)
   └── %LocalAppData%\MouseClickTracker\data.db
-      Tables: counter(total, key_total, active_seconds, inactive_seconds)
+      Tables: counter(total, key_total, active_seconds, inactive_seconds, last_reset_date)
               app_stats(process_name, seconds)
 
 WebServer (HttpListener on :5000)
@@ -71,7 +71,9 @@ SyncService (optional, 1-minute timer) — only created when ServerUrl is set
        └── calls OnConfigReceived() callback → updates MainForm fields
 
 ResetTimer (30-second timer, always active)
-  └── CheckReset() — fires DataStore.Reset() + ActivityTracker.Reset() when time matches resetTime
+  └── CheckReset() — fires DataStore.Reset() + ActivityTracker.Reset() when
+      today's resetTime moment has passed and last_reset_date < today
+      (so a client booted at 10:30 still resets even if it missed the 09:00 tick)
 ```
 
 **System tray**: closing the window hides it to tray (`OnFormClosing` cancels the event and calls `Hide()`). The `NotifyIcon` has a context menu with "Открыть" (shows window) and "Выход" (sets `_realClose = true` then closes). Double-click on the tray icon also restores the window. The app only truly exits via the tray menu.
@@ -90,7 +92,9 @@ ResetTimer (30-second timer, always active)
 
 **Schedule (server-driven)**: `_workStart`, `_workEnd`, `_resetTime` are in-memory fields in `MainForm`, set by the `SyncService` callback. `_labelSchedule` shows the current received schedule (blue = active, gray = not configured).
 
-**Reset behaviour**: `DataStore.Reset()` zeroes `total`, `key_total`, `active_seconds`, `inactive_seconds`, and deletes all `app_stats` rows. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together. There is no manual reset in the UI — reset only happens via the server-driven schedule (`CheckReset`).
+**Reset behaviour**: `DataStore.Reset()` zeroes `total`, `key_total`, `active_seconds`, `inactive_seconds`, deletes all `app_stats` rows, and stamps `last_reset_date = today` in the same statement. `ActivityTracker.Reset()` clears in-memory accumulators. Both are called together. There is no manual reset in the UI — reset only happens via the server-driven schedule (`CheckReset`).
+
+**Missed reset recovery**: `last_reset_date` is persisted so that a client booted after `resetTime` still performs the reset for that day, and a restart later the same day doesn't reset twice. The `CheckReset` predicate is: `now ≥ today+resetTime AND last_reset_date < today`.
 
 ## Server Architecture (`MouseClickServer`)
 

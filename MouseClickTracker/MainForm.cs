@@ -13,6 +13,7 @@ public class MainForm : Form
     private string _workEnd   = "";
     private string _resetTime = "";
     private DateTime _lastReset = DateTime.MinValue;
+    private DateOnly? _lastResetDate;
     private int _clickCount;
     private int _keyCount;
 
@@ -106,6 +107,7 @@ public class MainForm : Form
 
         _clickCount      = _store.Load();
         _keyCount        = _store.LoadKeys();
+        _lastResetDate   = _store.LoadLastResetDate();
         _labelCount.Text    = _clickCount.ToString();
         _labelKeyCount.Text = _keyCount.ToString();
 
@@ -181,12 +183,17 @@ public class MainForm : Form
     {
         if (string.IsNullOrWhiteSpace(_resetTime)) return;
         if (!TimeOnly.TryParse(_resetTime, out var rt)) return;
-        var now = DateTime.Now;
-        if (now - _lastReset < TimeSpan.FromMinutes(1)) return;
-        var t = TimeOnly.FromDateTime(now);
-        if (t.Hour != rt.Hour || t.Minute != rt.Minute) return;
 
-        _lastReset = now;
+        var now              = DateTime.Now;
+        var today            = DateOnly.FromDateTime(now);
+        var todayResetMoment = today.ToDateTime(rt);
+
+        if (now < todayResetMoment) return;          // ещё не настал момент сегодняшнего сброса
+        if (_lastResetDate >= today) return;         // сегодня уже сбрасывали
+        if (now - _lastReset < TimeSpan.FromMinutes(1)) return;
+
+        _lastReset     = now;
+        _lastResetDate = today;
         _store.Reset();
         _activity.Reset();
         _clickCount = 0;

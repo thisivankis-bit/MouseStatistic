@@ -23,7 +23,8 @@ public sealed class DataStore : IDisposable
                 total            INTEGER NOT NULL DEFAULT 0,
                 active_seconds   INTEGER NOT NULL DEFAULT 0,
                 inactive_seconds INTEGER NOT NULL DEFAULT 0,
-                key_total        INTEGER NOT NULL DEFAULT 0
+                key_total        INTEGER NOT NULL DEFAULT 0,
+                last_reset_date  TEXT    NOT NULL DEFAULT ''
             );
             INSERT INTO counter (total) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM counter);
             CREATE TABLE IF NOT EXISTS app_stats (
@@ -38,15 +39,15 @@ public sealed class DataStore : IDisposable
 
     private void Migrate()
     {
-        // добавляем колонки в существующие БД без них
-        foreach (var col in new[] { "active_seconds", "inactive_seconds", "key_total" })
+        foreach (var ddl in new[]
         {
-            try
-            {
-                using var cmd = _conn.CreateCommand();
-                cmd.CommandText = $"ALTER TABLE counter ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0";
-                cmd.ExecuteNonQuery();
-            }
+            "ALTER TABLE counter ADD COLUMN active_seconds   INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE counter ADD COLUMN inactive_seconds INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE counter ADD COLUMN key_total        INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE counter ADD COLUMN last_reset_date  TEXT    NOT NULL DEFAULT ''",
+        })
+        {
+            try { using var c = _conn.CreateCommand(); c.CommandText = ddl; c.ExecuteNonQuery(); }
             catch (SqliteException) { /* колонка уже есть */ }
         }
     }
@@ -154,15 +155,28 @@ public sealed class DataStore : IDisposable
         }
     }
 
+    public DateOnly? LoadLastResetDate()
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT last_reset_date FROM counter LIMIT 1";
+            var raw = cmd.ExecuteScalar() as string;
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            return DateOnly.TryParse(raw, out var d) ? d : null;
+        }
+    }
+
     public void Reset()
     {
         lock (_lock)
         {
             using var cmd = _conn.CreateCommand();
             cmd.CommandText = """
-                UPDATE counter SET total = 0, active_seconds = 0, inactive_seconds = 0, key_total = 0;
+                UPDATE counter SET total = 0, active_seconds = 0, inactive_seconds = 0, key_total = 0, last_reset_date = $today;
                 DELETE FROM app_stats;
                 """;
+            cmd.Parameters.AddWithValue("$today", DateTime.Now.ToString("yyyy-MM-dd"));
             cmd.ExecuteNonQuery();
         }
     }
