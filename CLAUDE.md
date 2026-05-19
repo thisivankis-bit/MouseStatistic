@@ -58,7 +58,8 @@ ActivityTracker (1-second timer)
 
 DataStore (SQLite via Microsoft.Data.Sqlite)
   └── %LocalAppData%\MouseClickTracker\data.db
-      Tables: counter(total, key_total, active_seconds, inactive_seconds, last_reset_date)
+      Tables: counter(total, key_total, active_seconds, inactive_seconds, last_reset_date,
+                      synthetic_clicks, key_repeat_total, synthetic_keys)
               app_stats(process_name, seconds)
 
 WebServer (HttpListener on :5000)
@@ -118,7 +119,7 @@ GET  /             — embedded HTML dashboard (4 tabs, 30s poll)
 
 **Database**: `%ProgramData%\MouseClickServer\server.db`
 ```
-machines(machine_id PK, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys, wins)
+machines(machine_id PK, user_name, last_seen, total_clicks, total_keys, synthetic_clicks, key_repeats, synthetic_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys, wins)
 machine_app_stats(machine_id, process_name, seconds — composite PK)
 machine_daily(machine_id, day YYYY-MM-DD, clicks, keys, active_sec, inactive_sec — composite PK)
 daily_winner(day PK, machine_id)   ← one row per day, set on first machine to cross DailyWinTarget
@@ -128,6 +129,8 @@ settings(key PK, value)   ← stores work_start / work_end / reset_time
 **`recent_clicks` / `recent_keys`**: filled on every sync with the delta since the previous sync (`new - prev`, or `new` if a reset occurred). The office tab considers a client "online" (clicking/typing) when `recent_clicks + recent_keys > 0` within the last 150s, otherwise "away".
 
 **Daily history**: on each sync, `Upsert()` reads the previous snapshot, computes click/time deltas, and upserts into `machine_daily` (local server date). When a reset is detected (`new < prev`), today's `machine_daily` row is zeroed before accumulating new deltas — this keeps the Reports tab consistent with the Statistics tab (both reflect only post-reset activity).
+
+**Fraud signals (MVP)**: the low-level hooks expose two flags via their event args. `MouseHook` marshals `MSLLHOOKSTRUCT.flags` and surfaces `IsInjected` (set when `LLMHF_INJECTED` or `LLMHF_LOWER_IL_INJECTED` is on); `KeyboardHook` marshals `KBDLLHOOKSTRUCT.flags` for `IsInjected` AND tracks held `vkCode`s in a `HashSet` to derive `IsRepeat` (since `WH_KEYBOARD_LL` doesn't expose the standard auto-repeat bit). Counters `synthetic_clicks`, `key_repeat_total`, `synthetic_keys` accumulate locally, ride along in `/api/sync`, and are persisted on the server (`machines.synthetic_clicks/key_repeats/synthetic_keys`). The dashboard's Statistics tab computes the suspicious flag in JS: `totalEvents ≥ 100 AND (synthShare > 0.30 OR repeatShare > 0.50)` and shows a red flag ⚑ next to the name with a tooltip listing the ratios. These are advisories, not proof — a CS-go macro or holding `↓` to scroll a long page will trigger the flag.
 
 **Daily winner**: after the daily upsert, if today's `machine_daily.clicks + keys` for this machine is at least the daily target, the server does `INSERT INTO daily_winner ... ON CONFLICT(day) DO NOTHING`. If the insert actually happened (this machine was the first today), `machines.wins` is incremented by 1. The Statistics tab renders a gold star next to the user/machine name showing the lifetime win count (grey star with `0` when wins are zero). The target lives in `settings.daily_target` (admin sets it via the Schedule tab); both server-side winner detection and the dashboard's marathon X-axis read it from `/api/config`, falling back to 5000 when unset.
 

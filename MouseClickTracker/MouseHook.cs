@@ -3,13 +3,32 @@ using System.Runtime.InteropServices;
 
 namespace MouseClickTracker;
 
+public class MouseClickedEventArgs : EventArgs
+{
+    public bool IsInjected { get; init; }
+}
+
 public class MouseHook : IDisposable
 {
     private const int WH_MOUSE_LL = 14;
-    private const int WM_MOUSEMOVE = 0x0200;
+    private const int WM_MOUSEMOVE   = 0x0200;
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_RBUTTONDOWN = 0x0204;
     private const int WM_MBUTTONDOWN = 0x0207;
+
+    private const uint LLMHF_INJECTED            = 0x01;
+    private const uint LLMHF_LOWER_IL_INJECTED   = 0x02;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSLLHOOKSTRUCT
+    {
+        public int  ptX;
+        public int  ptY;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
 
     private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -28,7 +47,7 @@ public class MouseHook : IDisposable
     private IntPtr _hookHandle = IntPtr.Zero;
     private readonly LowLevelMouseProc _proc;
 
-    public event EventHandler? Clicked;
+    public event EventHandler<MouseClickedEventArgs>? Clicked;
     public event EventHandler? Activity;
 
     public MouseHook()
@@ -58,7 +77,11 @@ public class MouseHook : IDisposable
         {
             int msg = wParam.ToInt32();
             if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
-                Clicked?.Invoke(this, EventArgs.Empty);
+            {
+                var data     = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+                var injected = (data.flags & (LLMHF_INJECTED | LLMHF_LOWER_IL_INJECTED)) != 0;
+                Clicked?.Invoke(this, new MouseClickedEventArgs { IsInjected = injected });
+            }
             if (msg == WM_MOUSEMOVE || msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
                 Activity?.Invoke(this, EventArgs.Empty);
         }

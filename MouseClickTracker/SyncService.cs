@@ -37,12 +37,16 @@ public sealed class SyncService : IDisposable
     {
         try
         {
+            var fraud = _store.LoadFraudCounters();
             var payload = new
             {
                 machineId       = _machineId,
                 userName        = _userName,
                 totalClicks     = _store.Load(),
                 totalKeys       = _store.LoadKeys(),
+                syntheticClicks = fraud.SyntheticClicks,
+                keyRepeats      = fraud.KeyRepeats,
+                syntheticKeys   = fraud.SyntheticKeys,
                 activeSeconds   = _activity.ActiveSeconds,
                 inactiveSeconds = _activity.InactiveSeconds,
                 appStats        = _store.LoadAppStats()

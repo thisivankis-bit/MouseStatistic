@@ -44,6 +44,9 @@ app.MapGet("/api/machines", (HttpContext ctx) =>
         lastSeen        = m.LastSeen,
         totalClicks     = m.TotalClicks,
         totalKeys       = m.TotalKeys,
+        syntheticClicks = m.SyntheticClicks,
+        keyRepeats      = m.KeyRepeats,
+        syntheticKeys   = m.SyntheticKeys,
         activeSeconds   = m.ActiveSeconds,
         inactiveSeconds = m.InactiveSeconds,
         recentClicks    = m.RecentClicks,
@@ -132,6 +135,9 @@ namespace MouseClickServer
         string? UserName,
         long TotalClicks,
         long TotalKeys,
+        long SyntheticClicks,
+        long KeyRepeats,
+        long SyntheticKeys,
         long ActiveSeconds,
         long InactiveSeconds,
         List<AppStatPayload> AppStats);
@@ -208,6 +214,10 @@ namespace MouseClickServer
                     }
                     .wins-badge::before { content: "★ "; }
                     .wins-badge.empty { color: #BBB; }
+
+                    .fraud-flag {
+                        margin-left: 6px; color: #DC2626; font-weight: 700; cursor: help;
+                    }
 
                     .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
                     .metric { background: #f8f9fa; border-radius: 10px; padding: 10px 12px; }
@@ -538,12 +548,20 @@ namespace MouseClickServer
                         const subtitle    = m.userName ? `<div class="machine-id">${esc(m.machineId)}</div>` : '';
                         const winsCnt     = m.wins || 0;
                         const wins        = `<span class="wins-badge${winsCnt > 0 ? '' : ' empty'}" title="Побед в дневном марафоне">${winsCnt}</span>`;
+                        const totalEvents = (m.totalClicks || 0) + (m.totalKeys || 0);
+                        const synth       = (m.syntheticClicks || 0) + (m.syntheticKeys || 0);
+                        const synthShare  = totalEvents > 0 ? synth / totalEvents : 0;
+                        const repeatShare = m.totalKeys > 0 ? (m.keyRepeats || 0) / m.totalKeys : 0;
+                        const suspicious  = totalEvents >= 100 && (synthShare > 0.30 || repeatShare > 0.50);
+                        const fraud       = suspicious
+                            ? `<span class="fraud-flag" title="Подозрение: ${(synthShare*100).toFixed(0)}% синтетических, ${(repeatShare*100).toFixed(0)}% auto-repeat клавиш">⚑</span>`
+                            : '';
                         return `
                             <div class="machine-card">
                                 <div class="machine-header">
                                     <div class="status-dot status-${st}"></div>
                                     <div class="machine-name-block">
-                                        <div class="machine-name">${displayName}${wins}</div>
+                                        <div class="machine-name">${displayName}${wins}${fraud}</div>
                                         ${subtitle}
                                     </div>
                                     <div class="last-seen">${relTime(m.lastSeen)}</div>

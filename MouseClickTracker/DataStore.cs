@@ -20,11 +20,14 @@ public sealed class DataStore : IDisposable
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS counter (
-                total            INTEGER NOT NULL DEFAULT 0,
-                active_seconds   INTEGER NOT NULL DEFAULT 0,
-                inactive_seconds INTEGER NOT NULL DEFAULT 0,
-                key_total        INTEGER NOT NULL DEFAULT 0,
-                last_reset_date  TEXT    NOT NULL DEFAULT ''
+                total             INTEGER NOT NULL DEFAULT 0,
+                active_seconds    INTEGER NOT NULL DEFAULT 0,
+                inactive_seconds  INTEGER NOT NULL DEFAULT 0,
+                key_total         INTEGER NOT NULL DEFAULT 0,
+                last_reset_date   TEXT    NOT NULL DEFAULT '',
+                synthetic_clicks  INTEGER NOT NULL DEFAULT 0,
+                key_repeat_total  INTEGER NOT NULL DEFAULT 0,
+                synthetic_keys    INTEGER NOT NULL DEFAULT 0
             );
             INSERT INTO counter (total) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM counter);
             CREATE TABLE IF NOT EXISTS app_stats (
@@ -45,6 +48,9 @@ public sealed class DataStore : IDisposable
             "ALTER TABLE counter ADD COLUMN inactive_seconds INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE counter ADD COLUMN key_total        INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE counter ADD COLUMN last_reset_date  TEXT    NOT NULL DEFAULT ''",
+            "ALTER TABLE counter ADD COLUMN synthetic_clicks INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE counter ADD COLUMN key_repeat_total INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE counter ADD COLUMN synthetic_keys   INTEGER NOT NULL DEFAULT 0",
         })
         {
             try { using var c = _conn.CreateCommand(); c.CommandText = ddl; c.ExecuteNonQuery(); }
@@ -74,12 +80,14 @@ public sealed class DataStore : IDisposable
         }
     }
 
-    public void Increment()
+    public void Increment(bool injected = false)
     {
         lock (_lock)
         {
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "UPDATE counter SET total = total + 1";
+            cmd.CommandText = injected
+                ? "UPDATE counter SET total = total + 1, synthetic_clicks = synthetic_clicks + 1"
+                : "UPDATE counter SET total = total + 1";
             cmd.ExecuteNonQuery();
         }
     }
@@ -94,13 +102,32 @@ public sealed class DataStore : IDisposable
         }
     }
 
-    public void IncrementKey()
+    public void IncrementKey(bool isRepeat = false, bool injected = false)
     {
         lock (_lock)
         {
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "UPDATE counter SET key_total = key_total + 1";
+            cmd.CommandText = """
+                UPDATE counter SET
+                    key_total        = key_total + 1,
+                    key_repeat_total = key_repeat_total + $r,
+                    synthetic_keys   = synthetic_keys + $i
+                """;
+            cmd.Parameters.AddWithValue("$r", isRepeat ? 1 : 0);
+            cmd.Parameters.AddWithValue("$i", injected ? 1 : 0);
             cmd.ExecuteNonQuery();
+        }
+    }
+
+    public (long SyntheticClicks, long KeyRepeats, long SyntheticKeys) LoadFraudCounters()
+    {
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT synthetic_clicks, key_repeat_total, synthetic_keys FROM counter LIMIT 1";
+            using var r = cmd.ExecuteReader();
+            if (!r.Read()) return (0, 0, 0);
+            return (r.GetInt64(0), r.GetInt64(1), r.GetInt64(2));
         }
     }
 
@@ -173,7 +200,9 @@ public sealed class DataStore : IDisposable
         {
             using var cmd = _conn.CreateCommand();
             cmd.CommandText = """
-                UPDATE counter SET total = 0, active_seconds = 0, inactive_seconds = 0, key_total = 0, last_reset_date = $today;
+                UPDATE counter SET total = 0, active_seconds = 0, inactive_seconds = 0, key_total = 0,
+                    synthetic_clicks = 0, key_repeat_total = 0, synthetic_keys = 0,
+                    last_reset_date = $today;
                 DELETE FROM app_stats;
                 """;
             cmd.Parameters.AddWithValue("$today", DateTime.Now.ToString("yyyy-MM-dd"));

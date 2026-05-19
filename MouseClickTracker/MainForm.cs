@@ -192,18 +192,18 @@ public class MainForm : Form
         _labelSchedule.ForeColor = parts.Count > 0 ? Color.SteelBlue : Color.Gray;
     }
 
-    private void OnClicked(object? sender, EventArgs e)
+    private void OnClicked(object? sender, MouseClickedEventArgs e)
     {
         if (!IsInWorkHours(_workStart, _workEnd)) return;
-        _store.Increment();
+        _store.Increment(injected: e.IsInjected);
         _clickCount++;
         Invoke(() => _labelCount.Text = _clickCount.ToString());
     }
 
-    private void OnKeyPressed(object? sender, EventArgs e)
+    private void OnKeyPressed(object? sender, KeyPressedEventArgs e)
     {
         if (!IsInWorkHours(_workStart, _workEnd)) return;
-        _store.IncrementKey();
+        _store.IncrementKey(isRepeat: e.IsRepeat, injected: e.IsInjected);
         _keyCount++;
         Invoke(() => _labelKeyCount.Text = _keyCount.ToString());
     }

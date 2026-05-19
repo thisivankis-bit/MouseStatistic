@@ -10,6 +10,9 @@ public record MachineSnapshot(
     DateTime LastSeen,
     long TotalClicks,
     long TotalKeys,
+    long SyntheticClicks,
+    long KeyRepeats,
+    long SyntheticKeys,
     long ActiveSeconds,
     long InactiveSeconds,
     long RecentClicks,
@@ -62,6 +65,9 @@ public sealed class ServerDb : IDisposable
                 last_seen         TEXT NOT NULL,
                 total_clicks      INTEGER NOT NULL DEFAULT 0,
                 total_keys        INTEGER NOT NULL DEFAULT 0,
+                synthetic_clicks  INTEGER NOT NULL DEFAULT 0,
+                key_repeats       INTEGER NOT NULL DEFAULT 0,
+                synthetic_keys    INTEGER NOT NULL DEFAULT 0,
                 active_seconds    INTEGER NOT NULL DEFAULT 0,
                 inactive_seconds  INTEGER NOT NULL DEFAULT 0,
                 recent_clicks     INTEGER NOT NULL DEFAULT 0,
@@ -105,7 +111,10 @@ public sealed class ServerDb : IDisposable
             "ALTER TABLE machines      ADD COLUMN recent_clicks INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE machines      ADD COLUMN total_keys    INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE machines      ADD COLUMN recent_keys   INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE machines      ADD COLUMN wins          INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE machines      ADD COLUMN wins             INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE machines      ADD COLUMN synthetic_clicks INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE machines      ADD COLUMN key_repeats      INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE machines      ADD COLUMN synthetic_keys   INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE machine_daily ADD COLUMN keys          INTEGER NOT NULL DEFAULT 0",
         })
         {
@@ -153,13 +162,16 @@ public sealed class ServerDb : IDisposable
             var m = _conn.CreateCommand();
             m.Transaction = tx;
             m.CommandText = """
-                INSERT INTO machines (machine_id, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys)
-                VALUES ($id, $userName, $ts, $clicks, $keys, $active, $inactive, $rc, $rk)
+                INSERT INTO machines (machine_id, user_name, last_seen, total_clicks, total_keys, synthetic_clicks, key_repeats, synthetic_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys)
+                VALUES ($id, $userName, $ts, $clicks, $keys, $sc, $kr, $sk, $active, $inactive, $rc, $rk)
                 ON CONFLICT(machine_id) DO UPDATE SET
                     user_name        = $userName,
                     last_seen        = $ts,
                     total_clicks     = $clicks,
                     total_keys       = $keys,
+                    synthetic_clicks = $sc,
+                    key_repeats      = $kr,
+                    synthetic_keys   = $sk,
                     active_seconds   = $active,
                     inactive_seconds = $inactive,
                     recent_clicks    = $rc,
@@ -170,6 +182,9 @@ public sealed class ServerDb : IDisposable
             m.Parameters.AddWithValue("$ts",       DateTime.UtcNow.ToString("o"));
             m.Parameters.AddWithValue("$clicks",   payload.TotalClicks);
             m.Parameters.AddWithValue("$keys",     payload.TotalKeys);
+            m.Parameters.AddWithValue("$sc",       payload.SyntheticClicks);
+            m.Parameters.AddWithValue("$kr",       payload.KeyRepeats);
+            m.Parameters.AddWithValue("$sk",       payload.SyntheticKeys);
             m.Parameters.AddWithValue("$active",   payload.ActiveSeconds);
             m.Parameters.AddWithValue("$inactive", payload.InactiveSeconds);
             m.Parameters.AddWithValue("$rc",       dClicks);
@@ -271,7 +286,7 @@ public sealed class ServerDb : IDisposable
             var machines = new List<MachineSnapshot>();
 
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "SELECT machine_id, user_name, last_seen, total_clicks, total_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys, wins FROM machines ORDER BY last_seen DESC";
+            cmd.CommandText = "SELECT machine_id, user_name, last_seen, total_clicks, total_keys, synthetic_clicks, key_repeats, synthetic_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys, wins FROM machines ORDER BY last_seen DESC";
             using var r = cmd.ExecuteReader();
 
             while (r.Read())
@@ -282,10 +297,11 @@ public sealed class ServerDb : IDisposable
                 var apps = GetAppStats(id);
                 machines.Add(new MachineSnapshot(
                     id, userName, lastSeen,
-                    r.GetInt64(3), r.GetInt64(4),
-                    r.GetInt64(5), r.GetInt64(6),
-                    r.GetInt64(7), r.GetInt64(8),
-                    r.GetInt64(9),
+                    r.GetInt64(3),  r.GetInt64(4),
+                    r.GetInt64(5),  r.GetInt64(6),  r.GetInt64(7),
+                    r.GetInt64(8),  r.GetInt64(9),
+                    r.GetInt64(10), r.GetInt64(11),
+                    r.GetInt64(12),
                     apps));
             }
 
