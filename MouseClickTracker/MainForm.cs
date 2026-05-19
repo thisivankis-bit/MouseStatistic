@@ -107,9 +107,10 @@ public class MainForm : Form
         _resetTimer = new System.Threading.Timer(CheckReset, null, 0, 30_000);
 
         var trayMenu = new ContextMenuStrip();
-        trayMenu.Items.Add("Открыть", null, (_, _) => ShowWindow());
+        trayMenu.Items.Add("Открыть",   null, (_, _) => ShowWindow());
+        trayMenu.Items.Add("Настройки", null, (_, _) => { ShowWindow(); _btnSettings.PerformClick(); });
         trayMenu.Items.Add(new ToolStripSeparator());
-        trayMenu.Items.Add("Выход",   null, (_, _) => { _realClose = true; Close(); });
+        trayMenu.Items.Add("Выход",     null, (_, _) => { _realClose = true; Close(); });
 
         var appIcon = LoadAppIcon();
 
