@@ -30,9 +30,9 @@ public record PeriodMachineStat(
 
 public sealed class ServerDb : IDisposable
 {
-    // Combined clicks+keys threshold for "first to finish today" → daily winner bonus.
-    // Must match MARATHON_TARGET in Dashboard.Html.
-    private const long DailyWinTarget = 5000;
+    // Fallback combined clicks+keys threshold for "first to finish today" if the
+    // settings table doesn't have a daily_target row yet. Should match the JS fallback.
+    private const long DefaultDailyTarget = 5000;
 
     private static readonly string DbPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
@@ -234,7 +234,15 @@ public sealed class ServerDb : IDisposable
                 using var qr = q.ExecuteReader();
                 if (qr.Read()) { todayClicks = qr.GetInt64(0); todayKeys = qr.GetInt64(1); }
             }
-            if (todayClicks + todayKeys >= DailyWinTarget)
+            long dailyTarget = DefaultDailyTarget;
+            using (var ts = _conn.CreateCommand())
+            {
+                ts.Transaction = tx;
+                ts.CommandText = "SELECT value FROM settings WHERE key = 'daily_target'";
+                var raw = ts.ExecuteScalar() as string;
+                if (long.TryParse(raw, out var v) && v > 0) dailyTarget = v;
+            }
+            if (todayClicks + todayKeys >= dailyTarget)
             {
                 var insertWinner = _conn.CreateCommand();
                 insertWinner.Transaction = tx;

@@ -53,11 +53,16 @@ app.MapGet("/api/machines", (HttpContext ctx) =>
     });
 });
 
-app.MapGet("/api/config", () => new
+app.MapGet("/api/config", () =>
 {
-    workStart = db.GetSetting("work_start"),
-    workEnd   = db.GetSetting("work_end"),
-    resetTime = db.GetSetting("reset_time")
+    var target = db.GetSetting("daily_target");
+    return new
+    {
+        workStart   = db.GetSetting("work_start"),
+        workEnd     = db.GetSetting("work_end"),
+        resetTime   = db.GetSetting("reset_time"),
+        dailyTarget = long.TryParse(target, out var t) && t > 0 ? t : 5000L
+    };
 });
 
 app.MapPost("/api/config", async (HttpContext ctx) =>
@@ -67,6 +72,9 @@ app.MapPost("/api/config", async (HttpContext ctx) =>
     db.SetSetting("work_start", payload.WorkStart ?? "");
     db.SetSetting("work_end",   payload.WorkEnd   ?? "");
     db.SetSetting("reset_time", payload.ResetTime ?? "");
+    if (!string.IsNullOrWhiteSpace(payload.DailyTarget) &&
+        long.TryParse(payload.DailyTarget, out var t) && t > 0)
+        db.SetSetting("daily_target", t.ToString());
     return Results.Ok();
 });
 
@@ -116,7 +124,7 @@ app.Run();
 namespace MouseClickServer
 {
     public record AppStatPayload(string ProcessName, long Seconds);
-    public record ConfigPayload(string? WorkStart, string? WorkEnd, string? ResetTime);
+    public record ConfigPayload(string? WorkStart, string? WorkEnd, string? ResetTime, string? DailyTarget);
     public record VersionManifest(string? Version, string? FileName);
 
     public record SyncPayload(
@@ -330,6 +338,13 @@ namespace MouseClickServer
                             </div>
                             <div class="sch-hint">Оставьте пустым — не сбрасывать</div>
                         </div>
+                        <div class="sch-group">
+                            <div class="sch-label">Цель дня (события: клики + клавиши)</div>
+                            <div class="sch-row">
+                                <input type="number" id="sch-target" class="sch-time" min="1" step="100" style="width:140px">
+                            </div>
+                            <div class="sch-hint">Первый, кто перешагнёт планку, получает звезду в «Статистике»</div>
+                        </div>
                         <div class="sch-row">
                             <button class="sch-save" id="sch-save">Сохранить</button>
                             <span class="sch-msg" id="sch-msg"></span>
@@ -447,17 +462,24 @@ namespace MouseClickServer
                     async function loadSchedule() {
                         try {
                             const c = await (await fetch('/api/config')).json();
-                            document.getElementById('sch-start').value = c.workStart || '';
-                            document.getElementById('sch-end').value   = c.workEnd   || '';
-                            document.getElementById('sch-reset').value = c.resetTime || '';
+                            document.getElementById('sch-start').value  = c.workStart   || '';
+                            document.getElementById('sch-end').value    = c.workEnd     || '';
+                            document.getElementById('sch-reset').value  = c.resetTime   || '';
+                            document.getElementById('sch-target').value = c.dailyTarget || 5000;
+                            if (c.dailyTarget && Number.isFinite(c.dailyTarget) && c.dailyTarget > 0)
+                                _marathonTarget = c.dailyTarget;
                         } catch {}
                     }
+                    loadSchedule();   // also runs at page load so the marathon picks up the configured target
 
                     document.getElementById('sch-save').addEventListener('click', async () => {
+                        const targetRaw = document.getElementById('sch-target').value;
+                        const targetNum = parseInt(targetRaw, 10);
                         const payload = {
-                            workStart: document.getElementById('sch-start').value,
-                            workEnd:   document.getElementById('sch-end').value,
-                            resetTime: document.getElementById('sch-reset').value
+                            workStart:   document.getElementById('sch-start').value,
+                            workEnd:     document.getElementById('sch-end').value,
+                            resetTime:   document.getElementById('sch-reset').value,
+                            dailyTarget: targetRaw
                         };
                         const msg = document.getElementById('sch-msg');
                         try {
@@ -467,6 +489,8 @@ namespace MouseClickServer
                                 body: JSON.stringify(payload)
                             });
                             msg.textContent = r.ok ? 'Сохранено ✓' : 'Ошибка';
+                            if (r.ok && Number.isFinite(targetNum) && targetNum > 0)
+                                _marathonTarget = targetNum;
                         } catch { msg.textContent = 'Ошибка соединения'; }
                         setTimeout(() => msg.textContent = '', 3000);
                     });
@@ -612,7 +636,7 @@ namespace MouseClickServer
                     }
 
                     // ── Marathon scene helpers ───────────────────────────────
-                    const MARATHON_TARGET = 5000;        // combined clicks+keys to reach the flagpole
+                    let _marathonTarget = 5000;          // combined clicks+keys to reach the flagpole; refreshed from /api/config
                     const _marathonPos = new Map();      // machineId → smoothed x (lerps toward target)
 
                     function _drawSky(ctx, W, H) {
@@ -827,7 +851,7 @@ namespace MouseClickServer
                         ctx.fillRect(8, 8, 220, 24);
                         ctx.fillStyle = '#FFFFFF';
                         ctx.font = 'bold 11px "Segoe UI",sans-serif';
-                        ctx.fillText(`Цель дня: ${MARATHON_TARGET.toLocaleString('ru')} событий`, 16, 24);
+                        ctx.fillText(`Цель дня: ${_marathonTarget.toLocaleString('ru')} событий`, 16, 24);
 
                         // offline counter (top-right)
                         const offlineCount = machines.filter(m => getActivityStatus(m) === 'offline').length;
@@ -851,7 +875,7 @@ namespace MouseClickServer
                         const ranked = machines
                             .map(m => ({
                                 m,
-                                progress: Math.min(1, ((m.totalClicks || 0) + (m.totalKeys || 0)) / MARATHON_TARGET),
+                                progress: Math.min(1, ((m.totalClicks || 0) + (m.totalKeys || 0)) / _marathonTarget),
                                 status:   getActivityStatus(m)
                             }))
                             .sort((a, b) => a.progress - b.progress);
