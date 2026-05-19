@@ -195,24 +195,12 @@ namespace MouseClickServer
                     .last-seen { font-size: 0.75rem; color: #bbb; margin-left: auto; flex-shrink: 0; }
 
                     .wins-badge {
-                        display: inline-flex; align-items: center; gap: 5px;
-                        background: radial-gradient(circle at 30% 30%, #FFEE88 0%, #F8C828 55%, #C89008 100%);
-                        color: #5C2808; font-size: 0.7rem; font-weight: 700; font-variant-numeric: tabular-nums;
-                        padding: 2px 9px 2px 6px; margin-left: 8px;
-                        border: 1.5px solid #A07800; border-radius: 12px;
-                        box-shadow: inset 0 0 0 1px rgba(255,238,136,0.5);
-                        vertical-align: middle;
+                        display: inline-flex; align-items: center; gap: 3px;
+                        color: #C89008; font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums;
+                        margin-left: 8px; vertical-align: middle;
                     }
-                    .wins-badge::before {
-                        content: "★"; color: #A07800; font-size: 0.8rem; line-height: 1;
-                    }
-                    .wins-badge.empty {
-                        background: radial-gradient(circle at 30% 30%, #E8E8E8 0%, #BBB 55%, #888 100%);
-                        color: #555; border-color: #888;
-                        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
-                        opacity: 0.7;
-                    }
-                    .wins-badge.empty::before { color: #777; }
+                    .wins-badge::before { content: "★"; font-size: 0.9rem; line-height: 1; }
+                    .wins-badge.empty { color: #BBB; }
 
                     .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
                     .metric { background: #f8f9fa; border-radius: 10px; padding: 10px 12px; }
