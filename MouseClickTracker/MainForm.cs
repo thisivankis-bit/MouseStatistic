@@ -226,7 +226,9 @@ public class MainForm : Form
     private void OnKeyPressed(object? sender, KeyPressedEventArgs e)
     {
         if (!IsInWorkHours(_workStart, _workEnd)) return;
-        _store.IncrementKey(isRepeat: e.IsRepeat, injected: e.IsInjected);
+        // Drop auto-repeats from a held key: they shouldn't inflate the daily count.
+        if (e.IsRepeat) return;
+        _store.IncrementKey(injected: e.IsInjected);
         _keyCount++;
         Invoke(() => _labelKeyCount.Text = _keyCount.ToString());
     }

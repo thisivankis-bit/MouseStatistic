@@ -540,6 +540,17 @@ namespace MouseClickServer
                         if (age < 3600) return `${Math.floor(age/60)}м назад`;
                         return `${Math.floor(age/3600)}ч назад`;
                     }
+                    function _fraud(m) {
+                        const totalEvents = (m.totalClicks || 0) + (m.totalKeys || 0);
+                        const synth       = (m.syntheticClicks || 0) + (m.syntheticKeys || 0);
+                        const synthShare  = totalEvents > 0 ? synth / totalEvents : 0;
+                        const repeatShare = m.totalKeys > 0 ? (m.keyRepeats || 0) / m.totalKeys : 0;
+                        const suspicious  = totalEvents >= 100 && (synthShare > 0.30 || repeatShare > 0.50);
+                        return {
+                            suspicious,
+                            title: `Подозрение: ${(synthShare*100).toFixed(0)}% синтетических, ${(repeatShare*100).toFixed(0)}% auto-repeat клавиш`
+                        };
+                    }
 
                     // ── Stats tab ─────────────────────────────────────────────
                     function renderCard(m) {
@@ -559,13 +570,9 @@ namespace MouseClickServer
                         const subtitle    = m.userName ? `<div class="machine-id">${esc(m.machineId)}</div>` : '';
                         const winsCnt     = m.wins || 0;
                         const wins        = `<span class="wins-badge${winsCnt > 0 ? '' : ' empty'}" title="Побед в дневном марафоне">${winsCnt}</span>`;
-                        const totalEvents = (m.totalClicks || 0) + (m.totalKeys || 0);
-                        const synth       = (m.syntheticClicks || 0) + (m.syntheticKeys || 0);
-                        const synthShare  = totalEvents > 0 ? synth / totalEvents : 0;
-                        const repeatShare = m.totalKeys > 0 ? (m.keyRepeats || 0) / m.totalKeys : 0;
-                        const suspicious  = totalEvents >= 100 && (synthShare > 0.30 || repeatShare > 0.50);
-                        const fraud       = suspicious
-                            ? `<span class="fraud-flag" title="Подозрение: ${(synthShare*100).toFixed(0)}% синтетических, ${(repeatShare*100).toFixed(0)}% auto-repeat клавиш">⚑</span>`
+                        const f = _fraud(m);
+                        const fraud = f.suspicious
+                            ? `<span class="fraud-flag" title="${f.title}">⚑</span>`
                             : '';
                         const cardCls = stale ? ' stale' : (st === 'online' ? ' online' : '');
                         return `
@@ -1034,10 +1041,17 @@ namespace MouseClickServer
                             const todayScore = (r.m.totalClicks || 0) + (r.m.totalKeys || 0);
                             const nm = (r.m.userName || r.m.machineId).substring(0, 12);
 
+                            const fraud = _fraud(r.m).suspicious;
                             ctx.textAlign = 'center';
                             ctx.font = 'bold 9px "Segoe UI",sans-serif';
                             ctx.fillStyle = offline ? '#404060' : '#0a0a3a';
                             ctx.fillText(nm, next, groundY - 62);
+                            if (fraud) {
+                                const nmWidth = ctx.measureText(nm).width;
+                                ctx.fillStyle = '#dc2626';
+                                ctx.font = 'bold 10px "Segoe UI",sans-serif';
+                                ctx.fillText('⚑', next + nmWidth / 2 + 6, groundY - 62);
+                            }
                             ctx.textAlign = 'left';
                             _drawScoreBadge(ctx, next, groundY - 50, todayScore, r.status);
                             ctx.restore();

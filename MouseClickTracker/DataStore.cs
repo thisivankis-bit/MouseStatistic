@@ -102,18 +102,16 @@ public sealed class DataStore : IDisposable
         }
     }
 
-    public void IncrementKey(bool isRepeat = false, bool injected = false)
+    public void IncrementKey(bool injected = false)
     {
         lock (_lock)
         {
             using var cmd = _conn.CreateCommand();
             cmd.CommandText = """
                 UPDATE counter SET
-                    key_total        = key_total + 1,
-                    key_repeat_total = key_repeat_total + $r,
-                    synthetic_keys   = synthetic_keys + $i
+                    key_total      = key_total + 1,
+                    synthetic_keys = synthetic_keys + $i
                 """;
-            cmd.Parameters.AddWithValue("$r", isRepeat ? 1 : 0);
             cmd.Parameters.AddWithValue("$i", injected ? 1 : 0);
             cmd.ExecuteNonQuery();
         }
