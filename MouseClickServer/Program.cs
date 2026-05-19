@@ -589,8 +589,13 @@ namespace MouseClickServer
                     }
 
                     // ── Office tab — Mario pixel-art characters ───────────────
-                    // Pixel colors: r=red(hat/shirt) s=skin b=brown(hair/boots) u=blue(overalls)
-                    const _mCol = { r:'#D83010', s:'#F8A070', b:'#5C2808', u:'#2858C8', '0':null };
+                    // r=red(hat/shirt) s=skin b=brown(hair/boots) u=blue(overalls)
+                    // g=koopa shell l=shell highlight y=koopa body w=eye white k=pupil/black
+                    const _mCol = {
+                        r:'#D83010', s:'#F8A070', b:'#5C2808', u:'#2858C8',
+                        g:'#3CA040', l:'#80D830', y:'#F8C828', w:'#FFFFFF', k:'#181818',
+                        '0':null
+                    };
 
                     function _sprite(ctx, ox, oy, rows, sc, pal) {
                         rows.forEach((row, ry) => {
@@ -654,6 +659,64 @@ namespace MouseClickServer
                             '00bbuu00uuubbb00',
                             '000bb000000bbbb0',
                         ],
+                        // 16-wide, 11-tall — Goomba (front-facing brown mushroom)
+                        goombaA: [
+                            '00000bbbbbb00000',
+                            '0000bbbbbbbb0000',
+                            '000bbbbbbbbbb000',
+                            '00bbbwkbbkwbbb00',
+                            '00bbbwkbbkwbbb00',
+                            '0bbbbbbbbbbbbbb0',
+                            '0bbbbbkkkkbbbbb0',
+                            '00bbbbbbbbbbbb00',
+                            '000bbbbbbbbbb000',
+                            '00bbbbb00bbbbb00',
+                            '0bbb0000000bbbb0',
+                        ],
+                        goombaB: [
+                            '00000bbbbbb00000',
+                            '0000bbbbbbbb0000',
+                            '000bbbbbbbbbb000',
+                            '00bbbwkbbkwbbb00',
+                            '00bbbwkbbkwbbb00',
+                            '0bbbbbbbbbbbbbb0',
+                            '0bbbbbkkkkbbbbb0',
+                            '00bbbbbbbbbbbb00',
+                            '000bbbbbbbbbb000',
+                            '00bbb000000bbb00',
+                            '0bbbbb0000bbbbb0',
+                        ],
+                        // 16-wide, 13-tall — Koopa Troopa (turtle, green shell + yellow body/head)
+                        koopaA: [
+                            '00000yyyyyy00000',
+                            '0000yyyyyyyy0000',
+                            '0000yywkwkyy0000',
+                            '0000yykkkkyy0000',
+                            '000ggggggggg0000',
+                            '00gglllllllgg000',
+                            '0gllllllllllg000',
+                            '0gllllllllllg000',
+                            '0ggggggggggggg00',
+                            '00gggyyyygggg000',
+                            '000yyyyyyyyyy000',
+                            '00bbb0000bbb0000',
+                            '0bbbb0000bbbb000',
+                        ],
+                        koopaB: [
+                            '00000yyyyyy00000',
+                            '0000yyyyyyyy0000',
+                            '0000yywkwkyy0000',
+                            '0000yykkkkyy0000',
+                            '000ggggggggg0000',
+                            '00gglllllllgg000',
+                            '0gllllllllllg000',
+                            '0gllllllllllg000',
+                            '0ggggggggggggg00',
+                            '00gggyyyygggg000',
+                            '000yyyyyyyyyy000',
+                            '0bbb0000bbb00000',
+                            'bbbb0000bbbb0000',
+                        ],
                     };
 
                     // online = activity within last 150s; away = connected, no recent input; offline = >10min
@@ -668,6 +731,50 @@ namespace MouseClickServer
                     // ── Marathon scene helpers ───────────────────────────────
                     let _marathonTarget = 5000;          // combined clicks+keys to reach the flagpole; refreshed from /api/config
                     const _marathonPos = new Map();      // machineId → smoothed x (lerps toward target)
+                    const _critters    = [];             // ambient walkers: {type, x, y, vx, born}
+                    let   _critterSpawnTick = 0;
+
+                    function _drawCritters(ctx, W, groundY, tick) {
+                        // spawn at most every ~2.5s, cap 4 simultaneous
+                        if (tick - _critterSpawnTick > 150 && _critters.length < 4 && Math.random() < 0.4) {
+                            const type   = Math.random() < 0.5 ? 'goomba' : 'koopa';
+                            const fromLR = Math.random() < 0.5;
+                            const speed  = 0.4 + Math.random() * 0.5;
+                            _critters.push({
+                                type,
+                                x:    fromLR ? -20         : W + 20,
+                                vx:   fromLR ?  speed      : -speed,
+                                born: tick,
+                            });
+                            _critterSpawnTick = tick;
+                        }
+                        for (let i = _critters.length - 1; i >= 0; i--) {
+                            const c  = _critters[i];
+                            c.x += c.vx;
+                            if (c.x < -40 || c.x > W + 40) { _critters.splice(i, 1); continue; }
+
+                            const phase = Math.floor((tick - c.born) / 10) % 2;
+                            const fr    = _SP[c.type + (phase ? 'B' : 'A')];
+                            const sc    = 2;
+                            const sw    = fr[0].length * sc;
+                            const sh    = fr.length * sc;
+                            const ox    = Math.round(c.x - sw / 2);
+                            const oy    = Math.round(groundY - sh);
+
+                            ctx.fillStyle = 'rgba(0,0,0,0.18)';
+                            ctx.beginPath(); ctx.ellipse(c.x, groundY - 1, sw * 0.42, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+                            if (c.vx > 0) {
+                                ctx.save();
+                                ctx.translate(ox + sw, oy);
+                                ctx.scale(-1, 1);
+                                _sprite(ctx, 0, 0, fr, sc, _mCol);
+                                ctx.restore();
+                            } else {
+                                _sprite(ctx, ox, oy, fr, sc, _mCol);
+                            }
+                        }
+                    }
 
                     function _drawSky(ctx, W, H) {
                         const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -868,6 +975,8 @@ namespace MouseClickServer
 
                         _drawFlagpole(ctx, trackRight, groundY);
                         _drawCastle(ctx, trackRight + 28, groundY);
+
+                        _drawCritters(ctx, W, groundY, tick);
 
                         // start line
                         ctx.fillStyle = '#FFFFFF';
