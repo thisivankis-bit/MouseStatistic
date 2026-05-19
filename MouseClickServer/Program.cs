@@ -195,11 +195,10 @@ namespace MouseClickServer
                     .last-seen { font-size: 0.75rem; color: #bbb; margin-left: auto; flex-shrink: 0; }
 
                     .wins-badge {
-                        display: inline-flex; align-items: center; gap: 3px;
-                        color: #C89008; font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums;
-                        margin-left: 8px; vertical-align: middle;
+                        color: #C89008; font-weight: 700; font-variant-numeric: tabular-nums;
+                        margin-left: 8px;
                     }
-                    .wins-badge::before { content: "★"; font-size: 0.9rem; line-height: 1; }
+                    .wins-badge::before { content: "★ "; }
                     .wins-badge.empty { color: #BBB; }
 
                     .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
