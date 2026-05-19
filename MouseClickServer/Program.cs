@@ -796,9 +796,9 @@ namespace MouseClickServer
 
                     function _drawScoreBadge(ctx, cx, cy, score, status) {
                         const text = score.toLocaleString('ru');
-                        ctx.font = 'bold 13px "Segoe UI",sans-serif';
+                        ctx.font = 'bold 10px "Segoe UI",sans-serif';
                         const tw = ctx.measureText(text).width;
-                        const padL = 24, padR = 12, h = 20;
+                        const padL = 17, padR = 8, h = 14;
                         const w = padL + tw + padR;
                         const x = Math.round(cx - w / 2);
                         const y = Math.round(cy - h / 2);
@@ -815,13 +815,13 @@ namespace MouseClickServer
                         if (ctx.roundRect) {
                             ctx.beginPath(); ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, h / 2); ctx.stroke();
                         }
-                        const coinX = x + 12, coinY = y + h / 2;
+                        const coinX = x + 9, coinY = y + h / 2;
                         ctx.fillStyle = '#F8C828';
-                        ctx.beginPath(); ctx.arc(coinX, coinY, 6, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(coinX, coinY, 4, 0, Math.PI * 2); ctx.fill();
                         ctx.fillStyle = '#FFEE88';
-                        ctx.beginPath(); ctx.arc(coinX - 1.5, coinY - 1.5, 2, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(coinX - 1, coinY - 1, 1.3, 0, Math.PI * 2); ctx.fill();
                         ctx.strokeStyle = '#A07800'; ctx.lineWidth = 1;
-                        ctx.beginPath(); ctx.arc(coinX, coinY, 6, 0, Math.PI * 2); ctx.stroke();
+                        ctx.beginPath(); ctx.arc(coinX, coinY, 4, 0, Math.PI * 2); ctx.stroke();
                         ctx.fillStyle = '#FFFFFF';
                         ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
                         ctx.fillText(text, x + padL, y + h / 2 + 1);
@@ -923,14 +923,14 @@ namespace MouseClickServer
                             _drawMarathonRunner(ctx, next, groundY, tick, r.status !== 'online');
 
                             const todayScore = (r.m.totalClicks || 0) + (r.m.totalKeys || 0);
-                            const nm = (r.m.userName || r.m.machineId).substring(0, 16);
+                            const nm = (r.m.userName || r.m.machineId).substring(0, 12);
 
                             ctx.textAlign = 'center';
-                            ctx.font = 'bold 11px "Segoe UI",sans-serif';
+                            ctx.font = 'bold 9px "Segoe UI",sans-serif';
                             ctx.fillStyle = offline ? '#404060' : '#0a0a3a';
-                            ctx.fillText(nm, next, groundY - 74);
+                            ctx.fillText(nm, next, groundY - 62);
                             ctx.textAlign = 'left';
-                            _drawScoreBadge(ctx, next, groundY - 58, todayScore, r.status);
+                            _drawScoreBadge(ctx, next, groundY - 50, todayScore, r.status);
                             ctx.restore();
                         }
                     }
