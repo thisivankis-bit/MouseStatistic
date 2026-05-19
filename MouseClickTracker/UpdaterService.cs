@@ -7,7 +7,8 @@ namespace MouseClickTracker;
 
 public sealed class UpdaterService : IDisposable
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(5) };
+    public enum CheckResult { UpToDate, Updating, Error }
+
     private readonly string _serverUrl;
     private readonly System.Threading.Timer _timer;
 
@@ -16,33 +17,61 @@ public sealed class UpdaterService : IDisposable
 
     public UpdaterService(string serverUrl)
     {
-        _serverUrl = serverUrl.TrimEnd('/');
+        _serverUrl = serverUrl;
         // First check 30s after startup (let the main sync settle), then every 24h.
-        _timer = new System.Threading.Timer(Check, null, TimeSpan.FromSeconds(30), TimeSpan.FromHours(24));
+        _timer = new System.Threading.Timer(_ => RunBackground(), null, TimeSpan.FromSeconds(30), TimeSpan.FromHours(24));
     }
 
-    private async void Check(object? state)
+    private async void RunBackground()
     {
+        var (result, _) = await CheckAsync(_serverUrl);
+        if (result == CheckResult.Updating)
+        {
+            await Task.Delay(2000);
+            Environment.Exit(0);
+        }
+    }
+
+    /// <summary>
+    /// Asks the server for the latest version and, if it's strictly newer than the running build,
+    /// downloads /downloads/&lt;fileName&gt; and starts it with /VERYSILENT. The caller decides whether
+    /// to exit the process (Environment.Exit) on Updating — that lets the installer overwrite files.
+    /// </summary>
+    public static async Task<(CheckResult result, string message)> CheckAsync(string serverUrl)
+    {
+        if (string.IsNullOrWhiteSpace(serverUrl))
+            return (CheckResult.Error, "Адрес сервера не указан");
+
+        if (!serverUrl.StartsWith("http://",  StringComparison.OrdinalIgnoreCase) &&
+            !serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            serverUrl = "http://" + serverUrl;
+        serverUrl = serverUrl.TrimEnd('/');
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         try
         {
-            using var resp = await _http.GetAsync(_serverUrl + "/api/version");
-            if (!resp.IsSuccessStatusCode) return;
+            using var resp = await http.GetAsync(serverUrl + "/api/version");
+            if (!resp.IsSuccessStatusCode)
+                return (CheckResult.Error, $"Сервер вернул {(int)resp.StatusCode}");
 
             var info = await JsonSerializer.DeserializeAsync<VersionInfo>(
                 await resp.Content.ReadAsStreamAsync(), _jsonOpts);
-            if (info?.Version is null) return;
-            if (!Version.TryParse(info.Version, out var serverVersion)) return;
+            if (info?.Version is null)
+                return (CheckResult.Error, "Манифест пуст");
+            if (!Version.TryParse(info.Version, out var serverVersion))
+                return (CheckResult.Error, $"Некорректная версия '{info.Version}'");
 
             var localVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version();
-            if (serverVersion <= localVersion) return;
+            if (serverVersion <= localVersion)
+                return (CheckResult.UpToDate, $"Установлена последняя версия (v{localVersion.ToString(3)})");
 
             var fileName = string.IsNullOrWhiteSpace(info.FileName)
                 ? "MouseClickTracker-Setup.exe"
                 : info.FileName;
-            var url = _serverUrl + "/downloads/" + fileName;
+            var url = serverUrl + "/downloads/" + fileName;
             var tmp = Path.Combine(Path.GetTempPath(), $"MouseClickTracker-Setup-{info.Version}.exe");
 
-            using (var rs = await _http.GetStreamAsync(url))
+            using (var rs = await http.GetStreamAsync(url))
             using (var fs = File.Create(tmp))
                 await rs.CopyToAsync(fs);
 
@@ -53,18 +82,15 @@ public sealed class UpdaterService : IDisposable
                 UseShellExecute = true
             });
 
-            // Give the installer a moment to start, then bow out so it can overwrite our files.
-            await Task.Delay(2000);
-            Environment.Exit(0);
+            return (CheckResult.Updating, $"Найдено обновление v{info.Version}, устанавливаю…");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            return (CheckResult.Error, ex.Message);
+        }
     }
 
-    public void Dispose()
-    {
-        _timer.Dispose();
-        _http.Dispose();
-    }
+    public void Dispose() => _timer.Dispose();
 
     private record VersionInfo(
         [property: JsonPropertyName("version")]  string? Version,
