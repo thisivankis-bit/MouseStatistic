@@ -28,8 +28,8 @@ app.MapPost("/api/sync", async (HttpContext ctx) =>
     var payload = await ctx.Request.ReadFromJsonAsync<SyncPayload>();
     if (payload is null || string.IsNullOrWhiteSpace(payload.MachineId))
         return Results.BadRequest();
-    db.Upsert(payload);
-    return Results.Ok();
+    var wins = db.Upsert(payload);
+    return Results.Ok(new { wins });
 });
 
 app.MapGet("/api/machines", (HttpContext ctx) =>

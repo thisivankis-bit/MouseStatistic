@@ -80,6 +80,15 @@ public class MainForm : Form
         Location  = new Point(12, 188)
     };
 
+    private readonly Label _labelWins = new()
+    {
+        Text      = "★ 0",
+        Font      = new Font("Segoe UI", 9f, FontStyle.Bold),
+        ForeColor = Color.Silver,
+        AutoSize  = true,
+        Location  = new Point(330, 12)
+    };
+
     private readonly NotifyIcon _tray;
     private bool _realClose;
 
@@ -92,7 +101,7 @@ public class MainForm : Form
         if (!string.IsNullOrWhiteSpace(cfg.ServerUrl))
         {
             _sync = new SyncService(_store, _activity, cfg.ResolvedServerUrl, cfg.ResolvedMachineId, cfg.UserName,
-                OnConfigReceived);
+                OnConfigReceived, OnWinsReceived);
             _updater = new UpdaterService(cfg.ResolvedServerUrl);
         }
         _resetTimer = new System.Threading.Timer(CheckReset, null, 0, 30_000);
@@ -147,14 +156,14 @@ public class MainForm : Form
             else
             {
                 _sync = new SyncService(_store, _activity, current.ResolvedServerUrl, current.ResolvedMachineId, current.UserName,
-                    OnConfigReceived);
+                    OnConfigReceived, OnWinsReceived);
                 _updater = new UpdaterService(current.ResolvedServerUrl);
             }
             UpdateMachineInfoLabel(current);
         };
 
         UpdateScheduleLabel();
-        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _labelKeyTitle, _labelKeyCount, _btnSettings, _labelSchedule, _labelMachineInfo });
+        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _labelKeyTitle, _labelKeyCount, _btnSettings, _labelSchedule, _labelMachineInfo, _labelWins });
 
         _hook.Clicked  += OnClicked;
         _hook.Activity += (_, _) => _activity.RegisterActivity();
@@ -174,6 +183,16 @@ public class MainForm : Form
         _resetTime = reset;
         if (IsHandleCreated)
             BeginInvoke(UpdateScheduleLabel);
+    }
+
+    private void OnWinsReceived(long wins)
+    {
+        if (!IsHandleCreated) return;
+        BeginInvoke(() =>
+        {
+            _labelWins.Text      = $"★ {wins}";
+            _labelWins.ForeColor = wins > 0 ? Color.FromArgb(200, 144, 8) : Color.Silver;
+        });
     }
 
     private void UpdateMachineInfoLabel(AppConfig cfg)

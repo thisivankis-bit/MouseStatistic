@@ -14,6 +14,7 @@ public sealed class SyncService : IDisposable
     private readonly string _machineId;
     private readonly string _userName;
     private readonly Action<string, string, string>? _onConfig;
+    private readonly Action<long>? _onWins;
     private readonly System.Threading.Timer _timer;
 
     private static readonly JsonSerializerOptions _jsonOpts =
@@ -21,7 +22,8 @@ public sealed class SyncService : IDisposable
 
     public SyncService(DataStore store, ActivityTracker activity,
                        string serverUrl, string machineId, string userName,
-                       Action<string, string, string>? onConfig = null)
+                       Action<string, string, string>? onConfig = null,
+                       Action<long>? onWins = null)
     {
         _store          = store;
         _activity       = activity;
@@ -30,6 +32,7 @@ public sealed class SyncService : IDisposable
         _machineId      = machineId;
         _userName       = userName;
         _onConfig       = onConfig;
+        _onWins         = onWins;
         _timer = new System.Threading.Timer(Sync, null, TimeSpan.Zero, TimeSpan.FromMinutes(1));
     }
 
@@ -54,7 +57,13 @@ public sealed class SyncService : IDisposable
                     .ToArray()
             };
             var json = JsonSerializer.Serialize(payload);
-            await _http.PostAsync(_endpoint, new StringContent(json, Encoding.UTF8, "application/json"));
+            var resp = await _http.PostAsync(_endpoint, new StringContent(json, Encoding.UTF8, "application/json"));
+            if (resp.IsSuccessStatusCode && _onWins is not null)
+            {
+                var reply = await JsonSerializer.DeserializeAsync<SyncReply>(
+                    await resp.Content.ReadAsStreamAsync(), _jsonOpts);
+                if (reply is not null) _onWins(reply.Wins);
+            }
         }
         catch { }
 
@@ -82,4 +91,7 @@ public sealed class SyncService : IDisposable
         [property: JsonPropertyName("workStart")] string? WorkStart,
         [property: JsonPropertyName("workEnd")]   string? WorkEnd,
         [property: JsonPropertyName("resetTime")] string? ResetTime);
+
+    private record SyncReply(
+        [property: JsonPropertyName("wins")] long Wins);
 }

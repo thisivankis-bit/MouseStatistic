@@ -123,7 +123,7 @@ public sealed class ServerDb : IDisposable
         }
     }
 
-    public void Upsert(SyncPayload payload)
+    public long Upsert(SyncPayload payload)
     {
         lock (_lock)
         {
@@ -276,6 +276,16 @@ public sealed class ServerDb : IDisposable
             }
 
             tx.Commit();
+
+            long wins = 0;
+            using (var q = _conn.CreateCommand())
+            {
+                q.CommandText = "SELECT wins FROM machines WHERE machine_id = $id";
+                q.Parameters.AddWithValue("$id", payload.MachineId);
+                var raw = q.ExecuteScalar();
+                if (raw is long l) wins = l;
+            }
+            return wins;
         }
     }
 
