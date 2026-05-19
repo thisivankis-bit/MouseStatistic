@@ -198,6 +198,19 @@ namespace MouseClickServer
                     .machine-card {
                         background: white; border-radius: 16px; padding: 24px 28px;
                         box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+                        border: 2px solid transparent;
+                    }
+                    .machine-card.online {
+                        border-color: #16a34a;
+                        box-shadow: 0 2px 16px rgba(22,163,74,0.18);
+                    }
+                    .machine-card.away {
+                        border-color: #d97706;
+                        box-shadow: 0 2px 16px rgba(217,119,6,0.18);
+                    }
+                    .machine-card.stale {
+                        border-color: #dc2626;
+                        box-shadow: 0 2px 16px rgba(220,38,38,0.18);
                     }
                     .machine-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
                     .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
@@ -534,7 +547,8 @@ namespace MouseClickServer
 
                     // ── Stats tab ─────────────────────────────────────────────
                     function renderCard(m) {
-                        const st  = getStatus(m.lastSeen);
+                        const st    = getStatus(m.lastSeen);
+                        const stale = _ageSec(m.lastSeen) > 3600;
                         const top = m.appStats.slice(0, 5);
                         const maxSec = top[0]?.seconds || 1;
                         const bars = top.map(a => `
@@ -557,8 +571,9 @@ namespace MouseClickServer
                         const fraud       = suspicious
                             ? `<span class="fraud-flag" title="Подозрение: ${(synthShare*100).toFixed(0)}% синтетических, ${(repeatShare*100).toFixed(0)}% auto-repeat клавиш">⚑</span>`
                             : '';
+                        const cardCls = stale ? ' stale' : (st === 'online' ? ' online' : st === 'away' ? ' away' : '');
                         return `
-                            <div class="machine-card">
+                            <div class="machine-card${cardCls}">
                                 <div class="machine-header">
                                     <div class="status-dot status-${st}"></div>
                                     <div class="machine-name-block">
@@ -955,8 +970,16 @@ namespace MouseClickServer
                             document.getElementById('s-clicks').textContent   = totalClicks.toLocaleString('ru');
                             document.getElementById('s-keys').textContent     = totalKeys.toLocaleString('ru');
                             document.getElementById('s-active').textContent   = fmt(totalActive);
-                            document.getElementById('grid').innerHTML = machines.length
-                                ? machines.map(renderCard).join('')
+                            const sortedForStats = machines.slice().sort((a, b) => {
+                                const aStale = _ageSec(a.lastSeen) > 3600 ? 1 : 0;
+                                const bStale = _ageSec(b.lastSeen) > 3600 ? 1 : 0;
+                                if (aStale !== bStale) return aStale - bStale;
+                                const winsDiff = (b.wins || 0) - (a.wins || 0);
+                                if (winsDiff !== 0) return winsDiff;
+                                return new Date(b.lastSeen) - new Date(a.lastSeen);
+                            });
+                            document.getElementById('grid').innerHTML = sortedForStats.length
+                                ? sortedForStats.map(renderCard).join('')
                                 : '<div class="empty">Нет данных — ждём первого клиента</div>';
                             renderPeople(machines);
                             document.getElementById('updated').textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru');
