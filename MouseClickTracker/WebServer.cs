@@ -82,6 +82,7 @@ public sealed class WebServer : IDisposable
         <head>
             <meta charset="UTF-8">
             <title>Mouse Click Tracker</title>
+            <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%238BC34A'/%3E%3C/svg%3E">
             <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
             <style>
                 * { box-sizing: border-box; margin: 0; padding: 0; }
