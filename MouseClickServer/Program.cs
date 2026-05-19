@@ -201,12 +201,8 @@ namespace MouseClickServer
                         border: 2px solid transparent;
                     }
                     .machine-card.online {
-                        border-color: #16a34a;
-                        box-shadow: 0 2px 16px rgba(22,163,74,0.18);
-                    }
-                    .machine-card.away {
-                        border-color: #d97706;
-                        box-shadow: 0 2px 16px rgba(217,119,6,0.18);
+                        border-color: #2563eb;
+                        box-shadow: 0 2px 16px rgba(37,99,235,0.18);
                     }
                     .machine-card.stale {
                         border-color: #dc2626;
@@ -571,7 +567,7 @@ namespace MouseClickServer
                         const fraud       = suspicious
                             ? `<span class="fraud-flag" title="Подозрение: ${(synthShare*100).toFixed(0)}% синтетических, ${(repeatShare*100).toFixed(0)}% auto-repeat клавиш">⚑</span>`
                             : '';
-                        const cardCls = stale ? ' stale' : (st === 'online' ? ' online' : st === 'away' ? ' away' : '');
+                        const cardCls = stale ? ' stale' : (st === 'online' ? ' online' : '');
                         return `
                             <div class="machine-card${cardCls}">
                                 <div class="machine-header">
