@@ -206,6 +206,13 @@ namespace MouseClickServer
                     .wins-badge::before {
                         content: "★"; color: #A07800; font-size: 0.8rem; line-height: 1;
                     }
+                    .wins-badge.empty {
+                        background: radial-gradient(circle at 30% 30%, #E8E8E8 0%, #BBB 55%, #888 100%);
+                        color: #555; border-color: #888;
+                        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+                        opacity: 0.7;
+                    }
+                    .wins-badge.empty::before { color: #777; }
 
                     .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
                     .metric { background: #f8f9fa; border-radius: 10px; padding: 10px 12px; }
@@ -518,9 +525,8 @@ namespace MouseClickServer
                             </div>`).join('');
                         const displayName = m.userName ? esc(m.userName) : esc(m.machineId);
                         const subtitle    = m.userName ? `<div class="machine-id">${esc(m.machineId)}</div>` : '';
-                        const wins        = m.wins > 0
-                            ? `<span class="wins-badge" title="Побед в дневном марафоне">${m.wins}</span>`
-                            : '';
+                        const winsCnt     = m.wins || 0;
+                        const wins        = `<span class="wins-badge${winsCnt > 0 ? '' : ' empty'}" title="Побед в дневном марафоне">${winsCnt}</span>`;
                         return `
                             <div class="machine-card">
                                 <div class="machine-header">
