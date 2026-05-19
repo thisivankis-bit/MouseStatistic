@@ -102,9 +102,11 @@ public class MainForm : Form
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("Выход",   null, (_, _) => { _realClose = true; Close(); });
 
+        var appIcon = LoadAppIcon();
+
         _tray = new NotifyIcon
         {
-            Icon             = SystemIcons.Application,
+            Icon             = appIcon ?? SystemIcons.Application,
             Text             = "Mouse Click Tracker",
             ContextMenuStrip = trayMenu,
             Visible          = true
@@ -112,6 +114,7 @@ public class MainForm : Form
         _tray.DoubleClick += (_, _) => ShowWindow();
 
         Text = "Mouse Click Tracker";
+        if (appIcon != null) Icon = appIcon;
         Size = new Size(400, 240);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -233,6 +236,16 @@ public class MainForm : Form
                 _labelCount.Text    = "0";
                 _labelKeyCount.Text = "0";
             });
+    }
+
+    private static Icon? LoadAppIcon()
+    {
+        try
+        {
+            using var s = typeof(MainForm).Assembly.GetManifestResourceStream("MouseClickTracker.app.ico");
+            return s == null ? null : new Icon(s);
+        }
+        catch { return null; }
     }
 
     private static bool IsInWorkHours(string workStart, string workEnd)
