@@ -311,7 +311,7 @@ namespace MouseClickServer
                 </div>
 
                 <div id="tab-people" style="display:none">
-                    <canvas id="office-cv" width="1280" height="440"></canvas>
+                    <canvas id="office-cv" width="1280" height="420"></canvas>
                 </div>
 
                 <div id="tab-reports" style="display:none">
@@ -794,6 +794,40 @@ namespace MouseClickServer
                         ctx.beginPath(); ctx.arc(x, y, 5 * pulse, 0, Math.PI * 2); ctx.stroke();
                     }
 
+                    function _drawScoreBadge(ctx, cx, cy, score, status) {
+                        const text = score.toLocaleString('ru');
+                        ctx.font = 'bold 10px "Segoe UI",sans-serif';
+                        const tw = ctx.measureText(text).width;
+                        const padL = 17, padR = 8, h = 14;
+                        const w = padL + tw + padR;
+                        const x = Math.round(cx - w / 2);
+                        const y = Math.round(cy - h / 2);
+                        const bg = status === 'offline' ? 'rgba(70,70,90,0.92)'
+                                 : status === 'online'  ? 'rgba(20,90,40,0.92)'
+                                                        : 'rgba(120,72,24,0.92)';
+                        ctx.fillStyle = bg;
+                        if (ctx.roundRect) {
+                            ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill();
+                        } else {
+                            ctx.fillRect(x, y, w, h);
+                        }
+                        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+                        if (ctx.roundRect) {
+                            ctx.beginPath(); ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, h / 2); ctx.stroke();
+                        }
+                        const coinX = x + 9, coinY = y + h / 2;
+                        ctx.fillStyle = '#F8C828';
+                        ctx.beginPath(); ctx.arc(coinX, coinY, 4, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#FFEE88';
+                        ctx.beginPath(); ctx.arc(coinX - 1, coinY - 1, 1.3, 0, Math.PI * 2); ctx.fill();
+                        ctx.strokeStyle = '#A07800'; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.arc(coinX, coinY, 4, 0, Math.PI * 2); ctx.stroke();
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                        ctx.fillText(text, x + padL, y + h / 2 + 1);
+                        ctx.textBaseline = 'alphabetic';
+                    }
+
                     function _drawMarathonRunner(ctx, cx, groundY, tick, idle) {
                         const sc = 2;
                         const fr = idle
@@ -809,32 +843,38 @@ namespace MouseClickServer
                     }
 
                     function _drawOfficeChars(ctx, machines, tick) {
-                        const cv = ctx.canvas, W = cv.width, H = 440;
+                        const cv = ctx.canvas, W = cv.width, H = 300;
                         if (cv.height !== H) cv.height = H;
-                        const baseGroundY = 400;
-                        const laneStep    = 24;
-                        const labelAreaW  = 138;
-                        const trackLeft   = labelAreaW + 14;
-                        const trackRight  = W - 110;
-                        const trackWidth  = trackRight - trackLeft;
+                        const groundY    = 240;
+                        const trackLeft  = 50;
+                        const trackRight = W - 110;
+                        const trackWidth = trackRight - trackLeft;
 
                         _drawSky(ctx, W, H);
                         _drawClouds(ctx, W, tick);
-                        _drawHills(ctx, W, baseGroundY);
+                        _drawHills(ctx, W, groundY);
 
+                        // milestones (decorative): ? blocks and coin rows at 25/50/75%
                         for (const p of [0.25, 0.50, 0.75]) {
                             const x = trackLeft + p * trackWidth;
-                            _drawQuestionBlock(ctx, x - 12, baseGroundY - 92, tick);
-                            for (let i = 0; i < 3; i++) _drawCoin(ctx, x - 16 + i * 16, baseGroundY - 124, tick);
+                            _drawQuestionBlock(ctx, x - 12, groundY - 92, tick);
+                            for (let i = 0; i < 3; i++) _drawCoin(ctx, x - 16 + i * 16, groundY - 124, tick);
                         }
 
-                        _drawPipe(ctx, trackLeft + 0.40 * trackWidth - 16, baseGroundY, 30);
-                        _drawPipe(ctx, trackLeft + 0.68 * trackWidth - 16, baseGroundY, 46);
+                        _drawPipe(ctx, trackLeft + 0.40 * trackWidth - 16, groundY, 30);
+                        _drawPipe(ctx, trackLeft + 0.68 * trackWidth - 16, groundY, 46);
 
-                        _drawGround(ctx, W, baseGroundY, H);
+                        _drawGround(ctx, W, groundY, H);
 
-                        _drawFlagpole(ctx, trackRight, baseGroundY);
-                        _drawCastle(ctx, trackRight + 28, baseGroundY);
+                        _drawFlagpole(ctx, trackRight, groundY);
+                        _drawCastle(ctx, trackRight + 28, groundY);
+
+                        // start line
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(trackLeft - 2, groundY - 12, 2, 12);
+                        ctx.font = 'bold 10px "Segoe UI",sans-serif';
+                        ctx.fillStyle = '#0a0a3a';
+                        ctx.fillText('START', trackLeft - 22, groundY - 16);
 
                         // banner with day target
                         ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -843,6 +883,7 @@ namespace MouseClickServer
                         ctx.font = 'bold 11px "Segoe UI",sans-serif';
                         ctx.fillText(`Цель дня: ${_marathonTarget.toLocaleString('ru')} событий`, 16, 24);
 
+                        // offline counter (top-right)
                         const offlineCount = machines.filter(m => getActivityStatus(m) === 'offline').length;
                         if (offlineCount > 0) {
                             ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -860,69 +901,37 @@ namespace MouseClickServer
                             return;
                         }
 
-                        // lanes: leader on top, last at base ground
+                        // runners: offline are faded but still on the track; leaders draw on top
                         const ranked = machines
                             .map(m => ({
                                 m,
                                 progress: Math.min(1, ((m.totalClicks || 0) + (m.totalKeys || 0)) / _marathonTarget),
                                 status:   getActivityStatus(m)
                             }))
-                            .sort((a, b) => b.progress - a.progress);
+                            .sort((a, b) => a.progress - b.progress);
 
-                        const laneCount = ranked.length;
-                        const topLaneY  = baseGroundY - (laneCount - 1) * laneStep;
-
-                        // start line spans all lanes
-                        ctx.fillStyle = '#FFFFFF';
-                        ctx.fillRect(trackLeft - 2, topLaneY - 10, 2, baseGroundY - topLaneY + 10);
-                        ctx.font = 'bold 10px "Segoe UI",sans-serif';
-                        ctx.fillStyle = '#0a0a3a';
-                        ctx.fillText('START', trackLeft - 22, topLaneY - 14);
-
-                        // top lane drawn first → lower runners' hats cover upper runners' feet
-                        for (let i = 0; i < ranked.length; i++) {
-                            const r       = ranked[i];
-                            const laneY   = topLaneY + i * laneStep;
-                            const id      = r.m.machineId;
+                        for (const r of ranked) {
+                            const id = r.m.machineId;
                             const targetX = trackLeft + r.progress * trackWidth;
-                            const cur     = _marathonPos.get(id);
-                            const next    = cur === undefined ? targetX : cur + (targetX - cur) * 0.06;
+                            const cur = _marathonPos.get(id);
+                            const next = cur === undefined ? targetX : cur + (targetX - cur) * 0.06;
                             _marathonPos.set(id, next);
 
-                            const offline    = r.status === 'offline';
-                            const todayScore = (r.m.totalClicks || 0) + (r.m.totalKeys || 0);
-                            const nm         = (r.m.userName || r.m.machineId).substring(0, 14);
-
+                            const offline = r.status === 'offline';
                             ctx.save();
                             if (offline) ctx.globalAlpha = 0.4;
-                            _drawMarathonRunner(ctx, next, laneY, tick, r.status !== 'online');
-                            ctx.restore();
+                            _drawMarathonRunner(ctx, next, groundY, tick, r.status !== 'online');
 
-                            // left name plate centered on lane
-                            const plateH = 18;
-                            const plateY = Math.round(laneY - 16 - plateH / 2);
-                            const plateBg = offline ? 'rgba(70,70,90,0.88)'
-                                          : r.status === 'online' ? 'rgba(20,90,40,0.92)'
-                                                                  : 'rgba(120,72,24,0.92)';
-                            ctx.fillStyle = plateBg;
-                            if (ctx.roundRect) {
-                                ctx.beginPath(); ctx.roundRect(6, plateY, labelAreaW - 6, plateH, plateH / 2); ctx.fill();
-                            } else {
-                                ctx.fillRect(6, plateY, labelAreaW - 6, plateH);
-                            }
-                            ctx.strokeStyle = 'rgba(255,255,255,0.30)'; ctx.lineWidth = 1;
-                            if (ctx.roundRect) {
-                                ctx.beginPath(); ctx.roundRect(6.5, plateY + 0.5, labelAreaW - 7, plateH - 1, plateH / 2); ctx.stroke();
-                            }
-                            ctx.fillStyle = '#FFFFFF';
-                            ctx.font = 'bold 10px "Segoe UI",sans-serif';
-                            ctx.textBaseline = 'middle';
+                            const todayScore = (r.m.totalClicks || 0) + (r.m.totalKeys || 0);
+                            const nm = (r.m.userName || r.m.machineId).substring(0, 12);
+
+                            ctx.textAlign = 'center';
+                            ctx.font = 'bold 9px "Segoe UI",sans-serif';
+                            ctx.fillStyle = offline ? '#404060' : '#0a0a3a';
+                            ctx.fillText(nm, next, groundY - 62);
                             ctx.textAlign = 'left';
-                            ctx.fillText(nm, 12, plateY + plateH / 2 + 1);
-                            ctx.textAlign = 'right';
-                            ctx.fillText(todayScore.toLocaleString('ru'), labelAreaW - 4, plateY + plateH / 2 + 1);
-                            ctx.textBaseline = 'alphabetic';
-                            ctx.textAlign = 'left';
+                            _drawScoreBadge(ctx, next, groundY - 50, todayScore, r.status);
+                            ctx.restore();
                         }
                     }
 
