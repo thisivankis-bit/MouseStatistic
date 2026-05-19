@@ -311,7 +311,7 @@ namespace MouseClickServer
                 </div>
 
                 <div id="tab-people" style="display:none">
-                    <canvas id="office-cv" width="960" height="420"></canvas>
+                    <canvas id="office-cv" width="1280" height="420"></canvas>
                 </div>
 
                 <div id="tab-reports" style="display:none">
@@ -829,7 +829,7 @@ namespace MouseClickServer
                     }
 
                     function _drawMarathonRunner(ctx, cx, groundY, tick, idle) {
-                        const sc = 3;
+                        const sc = 2;
                         const fr = idle
                             ? _SP.stand
                             : (Math.floor(tick / 6) % 2 === 0 ? _SP.runA : _SP.runB);
