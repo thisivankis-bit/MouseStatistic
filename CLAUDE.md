@@ -109,8 +109,8 @@ Minimal ASP.NET Core API that runs as a Windows Service.
 ```
 POST /api/sync     — upserts machine snapshot; accumulates daily delta in machine_daily
 GET  /api/machines — all machine snapshots ordered by last_seen DESC; X-Server-Time header
-GET  /api/config   — returns work_start, work_end, reset_time from settings table
-POST /api/config   — saves work_start, work_end, reset_time to settings table
+GET  /api/config   — returns work_start, work_end, reset_time, daily_target from settings table
+POST /api/config   — saves work_start, work_end, reset_time, daily_target to settings table
 GET  /api/stats    — period statistics: ?from=YYYY-MM-DD&to=YYYY-MM-DD
 GET  /api/version  — reads %ProgramData%\MouseClickServer\downloads\latest.json, returns { version, fileName }
 GET  /downloads/*  — static files from %ProgramData%\MouseClickServer\downloads (auto-update installer)
@@ -156,7 +156,7 @@ Conditions: `online` = `(recentClicks + recentKeys) > 0 && age < 150s`; `away` =
 
 **Position smoothing**: `_marathonPos: Map<machineId, x>` keeps the current visual X per runner and lerps toward `targetX` (`trackLeft + progress * trackWidth`) at factor `0.06` each RAF frame, so the 30-s poll cycle doesn't cause Mario teleports.
 
-**Scene primitives** (all in `Dashboard.Html`): `_drawSky`, `_drawClouds`, `_drawHills`, `_drawGround`, `_drawQuestionBlock`, `_drawPipe`, `_drawFlagpole`, `_drawCastle`, `_drawCoin`, `_drawMarathonRunner`. Tunable constant: `MARATHON_TARGET` (combined events to reach the flagpole; currently 5000).
+**Scene primitives** (all in `Dashboard.Html`): `_drawSky`, `_drawClouds`, `_drawHills`, `_drawGround`, `_drawQuestionBlock`, `_drawPipe`, `_drawFlagpole`, `_drawCastle`, `_drawCoin`, `_drawMarathonRunner`. The marathon X-axis target is `_marathonTarget`, refreshed from `/api/config` on each poll (falls back to 5000 if the server hasn't returned a value yet); admins edit it via the Schedule tab.
 
 **Pixel sprite system**: sprites are defined in `const _SP` as arrays of 16-char strings; chars map to colors via `const _mCol` (`r`=red, `s`=skin, `b`=brown, `u`=blue, `0`=transparent). Drawn by `_sprite(ctx, ox, oy, rows, sc, pal)` using `fillRect` per pixel.
 
