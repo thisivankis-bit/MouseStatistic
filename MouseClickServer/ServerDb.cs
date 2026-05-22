@@ -22,6 +22,10 @@ public record MachineSnapshot(
 
 public record DailyEntry(string Day, long Clicks, long Keys, long ActiveSec, long InactiveSec);
 
+public record SyncResult(long Wins, int Rank, int Total);
+
+public record HourAggEntry(int Hour, long Clicks, long Keys, long ActiveSec, long InactiveSec);
+
 public record PeriodMachineStat(
     string MachineId,
     string UserName,
@@ -29,7 +33,9 @@ public record PeriodMachineStat(
     long TotalKeys,
     long TotalActiveSec,
     long TotalInactiveSec,
-    List<DailyEntry> Days);
+    int DayCount,
+    List<DailyEntry> Days,
+    List<HourAggEntry> ByHour);
 
 public sealed class ServerDb : IDisposable
 {
@@ -97,6 +103,17 @@ public sealed class ServerDb : IDisposable
                 inactive_sec INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (machine_id, day)
             );
+
+            CREATE TABLE IF NOT EXISTS machine_hourly (
+                machine_id   TEXT    NOT NULL,
+                day          TEXT    NOT NULL,
+                hour         INTEGER NOT NULL,
+                clicks       INTEGER NOT NULL DEFAULT 0,
+                keys         INTEGER NOT NULL DEFAULT 0,
+                active_sec   INTEGER NOT NULL DEFAULT 0,
+                inactive_sec INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (machine_id, day, hour)
+            );
             """;
         cmd.ExecuteNonQuery();
 
@@ -123,7 +140,7 @@ public sealed class ServerDb : IDisposable
         }
     }
 
-    public long Upsert(SyncPayload payload)
+    public SyncResult Upsert(SyncPayload payload)
     {
         lock (_lock)
         {
@@ -212,6 +229,38 @@ public sealed class ServerDb : IDisposable
                 a.ExecuteNonQuery();
             }
 
+            // Replace hourly buckets for every day appearing in this sync payload.
+            // Client sends absolute counts per (day, hour), so we wipe + re-insert each day in one go.
+            if (payload.Hours is { Count: > 0 })
+            {
+                foreach (var dayInPayload in payload.Hours.Select(h => h.Day).Distinct())
+                {
+                    var dh = _conn.CreateCommand();
+                    dh.Transaction = tx;
+                    dh.CommandText = "DELETE FROM machine_hourly WHERE machine_id = $id AND day = $day";
+                    dh.Parameters.AddWithValue("$id",  payload.MachineId);
+                    dh.Parameters.AddWithValue("$day", dayInPayload);
+                    dh.ExecuteNonQuery();
+                }
+                foreach (var h in payload.Hours)
+                {
+                    var ih = _conn.CreateCommand();
+                    ih.Transaction = tx;
+                    ih.CommandText = """
+                        INSERT INTO machine_hourly (machine_id, day, hour, clicks, keys, active_sec, inactive_sec)
+                        VALUES ($id, $day, $hour, $c, $k, $a, $i)
+                        """;
+                    ih.Parameters.AddWithValue("$id",   payload.MachineId);
+                    ih.Parameters.AddWithValue("$day",  h.Day);
+                    ih.Parameters.AddWithValue("$hour", h.Hour);
+                    ih.Parameters.AddWithValue("$c",    h.Clicks);
+                    ih.Parameters.AddWithValue("$k",    h.Keys);
+                    ih.Parameters.AddWithValue("$a",    h.ActiveSec);
+                    ih.Parameters.AddWithValue("$i",    h.InactiveSec);
+                    ih.ExecuteNonQuery();
+                }
+            }
+
             // Accumulate daily activity
             var today = DateTime.Now.ToString("yyyy-MM-dd");
             if (dClicks > 0 || dKeys > 0 || dActive > 0 || dInactive > 0)
@@ -285,7 +334,28 @@ public sealed class ServerDb : IDisposable
                 var raw = q.ExecuteScalar();
                 if (raw is long l) wins = l;
             }
-            return wins;
+
+            // Rank for today by (clicks + keys), 1-based. Machines without a row today aren't counted.
+            int rank = 0, total = 0;
+            using (var q = _conn.CreateCommand())
+            {
+                q.CommandText = """
+                    SELECT 1 + (
+                        SELECT COUNT(*) FROM machine_daily b
+                        WHERE b.day = $day
+                          AND (b.clicks + b.keys) > (
+                              SELECT (clicks + keys) FROM machine_daily
+                              WHERE machine_id = $id AND day = $day
+                          )
+                    ) AS rank,
+                    (SELECT COUNT(*) FROM machine_daily WHERE day = $day) AS total
+                    """;
+                q.Parameters.AddWithValue("$id",  payload.MachineId);
+                q.Parameters.AddWithValue("$day", today);
+                using var qr = q.ExecuteReader();
+                if (qr.Read()) { rank = qr.GetInt32(0); total = qr.GetInt32(1); }
+            }
+            return new SyncResult(wins, rank, total);
         }
     }
 
@@ -384,6 +454,30 @@ public sealed class ServerDb : IDisposable
                 list.Add(new DailyEntry(r.GetString(2), r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6)));
             }
 
+            // Hourly aggregate per machine across the same period.
+            var hourly = new Dictionary<string, List<HourAggEntry>>();
+            using (var hc = _conn.CreateCommand())
+            {
+                hc.CommandText = """
+                    SELECT machine_id, hour,
+                           SUM(clicks), SUM(keys), SUM(active_sec), SUM(inactive_sec)
+                    FROM machine_hourly
+                    WHERE day >= $from AND day <= $to
+                    GROUP BY machine_id, hour
+                    ORDER BY machine_id, hour
+                    """;
+                hc.Parameters.AddWithValue("$from", from);
+                hc.Parameters.AddWithValue("$to",   to);
+                using var hr = hc.ExecuteReader();
+                while (hr.Read())
+                {
+                    var id = hr.GetString(0);
+                    if (!hourly.TryGetValue(id, out var list))
+                        hourly[id] = list = new List<HourAggEntry>();
+                    list.Add(new HourAggEntry(hr.GetInt32(1), hr.GetInt64(2), hr.GetInt64(3), hr.GetInt64(4), hr.GetInt64(5)));
+                }
+            }
+
             return days.Select(kv => new PeriodMachineStat(
                 kv.Key,
                 names.GetValueOrDefault(kv.Key, ""),
@@ -391,7 +485,9 @@ public sealed class ServerDb : IDisposable
                 kv.Value.Sum(d => d.Keys),
                 kv.Value.Sum(d => d.ActiveSec),
                 kv.Value.Sum(d => d.InactiveSec),
-                kv.Value
+                kv.Value.Count,
+                kv.Value,
+                hourly.GetValueOrDefault(kv.Key) ?? new List<HourAggEntry>()
             )).ToList();
         }
     }

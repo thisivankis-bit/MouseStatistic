@@ -28,8 +28,8 @@ app.MapPost("/api/sync", async (HttpContext ctx) =>
     var payload = await ctx.Request.ReadFromJsonAsync<SyncPayload>();
     if (payload is null || string.IsNullOrWhiteSpace(payload.MachineId))
         return Results.BadRequest();
-    var wins = db.Upsert(payload);
-    return Results.Ok(new { wins });
+    var r = db.Upsert(payload);
+    return Results.Ok(new { wins = r.Wins, rank = r.Rank, total = r.Total });
 });
 
 app.MapGet("/api/machines", (HttpContext ctx) =>
@@ -94,7 +94,9 @@ app.MapGet("/api/stats", (string? from, string? to) =>
         totalKeys        = m.TotalKeys,
         totalActiveSec   = m.TotalActiveSec,
         totalInactiveSec = m.TotalInactiveSec,
-        days = m.Days.Select(d => new { day = d.Day, clicks = d.Clicks, keys = d.Keys, activeSec = d.ActiveSec, inactiveSec = d.InactiveSec })
+        dayCount         = m.DayCount,
+        days   = m.Days.Select(d   => new { day  = d.Day,  clicks = d.Clicks, keys = d.Keys, activeSec = d.ActiveSec, inactiveSec = d.InactiveSec }),
+        byHour = m.ByHour.Select(h => new { hour = h.Hour, clicks = h.Clicks, keys = h.Keys, activeSec = h.ActiveSec, inactiveSec = h.InactiveSec })
     });
 });
 
@@ -127,6 +129,7 @@ app.Run();
 namespace MouseClickServer
 {
     public record AppStatPayload(string ProcessName, long Seconds);
+    public record HourPayload(string Day, int Hour, long Clicks, long Keys, long ActiveSec, long InactiveSec);
     public record ConfigPayload(string? WorkStart, string? WorkEnd, string? ResetTime, string? DailyTarget);
     public record VersionManifest(string? Version, string? FileName);
 
@@ -140,7 +143,8 @@ namespace MouseClickServer
         long SyntheticKeys,
         long ActiveSeconds,
         long InactiveSeconds,
-        List<AppStatPayload> AppStats);
+        List<AppStatPayload> AppStats,
+        List<HourPayload>? Hours = null);
 
     public static class Dashboard
     {
@@ -287,6 +291,19 @@ namespace MouseClickServer
                     .rep-total td { background: #f5f5fc !important; font-weight: 600; color: #333; border-bottom: none; }
                     .rep-empty { text-align: center; padding: 48px 0; color: #ccc; font-size: 0.88rem; }
 
+                    .rep-hist-title { font-size: 0.95rem; font-weight: 600; color: #444; margin: 28px 0 14px 4px; }
+                    .rep-hist-card  { background: white; border-radius: 14px; padding: 16px 20px 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); margin-bottom: 12px; }
+                    .rep-hist-head  { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+                    .rep-hist-name  { font-weight: 600; color: #222; font-size: 0.9rem; }
+                    .rep-hist-sub   { font-size: 0.7rem; color: #bbb; }
+                    .rep-hist-bars   { display: flex; align-items: flex-end; gap: 6px; height: 92px; padding-bottom: 18px; position: relative; }
+                    .hist-col        { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; }
+                    .hist-val        { font-size: 0.62rem; color: #444; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 3px; }
+                    .hist-frame      { width: 100%; max-width: 28px; height: 60px; border: 1px solid #d6dae4; border-radius: 3px; background: #fafbfd; position: relative; overflow: hidden; transition: filter 0.15s; }
+                    .hist-fill-act   { position: absolute; left: 0; right: 0; bottom: 0; }
+                    .hist-fill-inact { position: absolute; left: 0; right: 0; background: #d6dae4; }
+                    .hist-col:hover .hist-frame { filter: brightness(0.95); }
+                    .hist-hr         { position: absolute; bottom: -16px; font-size: 0.65rem; color: #aaa; font-variant-numeric: tabular-nums; }
                 </style>
             </head>
             <body>
@@ -416,6 +433,62 @@ namespace MouseClickServer
                         loadReport();
                     });
 
+                    function _hourRange(cfg) {
+                        // Return inclusive hour list to plot. Use schedule window if defined; otherwise 0..23.
+                        const m1 = (cfg?.workStart || '').match(/^(\d{1,2})/);
+                        const m2 = (cfg?.workEnd   || '').match(/^(\d{1,2})/);
+                        if (m1 && m2) {
+                            const f = +m1[1], t = +m2[1] - 1;
+                            if (t >= f) {
+                                const out = [];
+                                for (let h = f; h <= t; h++) out.push(h);
+                                return out;
+                            }
+                        }
+                        const all = [];
+                        for (let h = 0; h < 24; h++) all.push(h);
+                        return all;
+                    }
+                    function _renderHistograms(data, hours) {
+                        const items = data.slice().sort((a, b) => b.totalActiveSec - a.totalActiveSec).map(m => {
+                            const days   = Math.max(1, m.dayCount || 1);
+                            const byHour = {};
+                            (m.byHour || []).forEach(b => byHour[b.hour] = b);
+                            const nm = m.userName
+                                ? `<span class="rep-hist-name">${esc(m.userName)}</span><span class="rep-hist-sub">${esc(m.machineId)}</span>`
+                                : `<span class="rep-hist-name">${esc(m.machineId)}</span>`;
+                            const frameH = 58;     // inner usable height inside .hist-frame (height - borders)
+                            const cap    = days * 3600;
+                            const cols = hours.map(h => {
+                                const b        = byHour[h] || { activeSec: 0, inactiveSec: 0, clicks: 0, keys: 0 };
+                                const actR     = Math.min(1, b.activeSec / cap);
+                                const inaR     = Math.min(1 - actR, b.inactiveSec / cap);
+                                const aH       = Math.round(actR * frameH);
+                                const iH       = Math.round(inaR * frameH);
+                                const color    = actR > 0.7 ? '#16a34a'
+                                               : actR > 0.3 ? '#65a30d'
+                                               : actR > 0   ? '#84cc16'
+                                                             : '#cbd2dd';
+                                const actMin   = Math.round(b.activeSec   / 60);
+                                const inactMin = Math.round(b.inactiveSec / 60);
+                                const val      = actMin > 0 ? `<div class="hist-val">${actMin}</div>` : '';
+                                const tip = `${String(h).padStart(2,'0')}:00 — ${actMin} мин активно, ${inactMin} мин неактивно · ${(b.clicks + b.keys).toLocaleString('ru')} событий`;
+                                return `<div class="hist-col" title="${tip}">
+                                    ${val}
+                                    <div class="hist-frame">
+                                        <div class="hist-fill-act"   style="height:${aH}px;background:${color}"></div>
+                                        <div class="hist-fill-inact" style="bottom:${aH}px;height:${iH}px"></div>
+                                    </div>
+                                    <div class="hist-hr">${String(h).padStart(2,'0')}</div>
+                                </div>`;
+                            }).join('');
+                            return `<div class="rep-hist-card">
+                                <div class="rep-hist-head">${nm}</div>
+                                <div class="rep-hist-bars">${cols}</div>
+                            </div>`;
+                        }).join('');
+                        return `<div class="rep-hist-title">Активность по часам — доля минут с активностью</div>${items}`;
+                    }
                     async function loadReport() {
                         const from = document.getElementById('rep-from').value;
                         const to   = document.getElementById('rep-to').value;
@@ -423,7 +496,10 @@ namespace MouseClickServer
                         const wrap = document.getElementById('rep-table-wrap');
                         wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Загрузка…</div></div>';
                         try {
-                            const data = await (await fetch(`/api/stats?from=${from}&to=${to}`)).json();
+                            const [data, cfg] = await Promise.all([
+                                fetch(`/api/stats?from=${from}&to=${to}`).then(r => r.json()),
+                                fetch('/api/config').then(r => r.json()).catch(() => null)
+                            ]);
                             if (!data.length) {
                                 wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Нет данных за выбранный период</div></div>';
                                 ['rep-s-clicks','rep-s-keys','rep-s-active','rep-s-pct'].forEach(id => document.getElementById(id).textContent = '—');
@@ -456,6 +532,8 @@ namespace MouseClickServer
                                 </tr>`;
                             }).join('');
                             const n = data.length, s = n===1?'':'а';
+                            const hours = _hourRange(cfg);
+                            const hasHourly = data.some(m => (m.byHour || []).length > 0);
                             wrap.innerHTML = `<div class="rep-card"><table class="rep-table">
                                 <thead><tr>
                                     <th>Сотрудник</th>
@@ -474,7 +552,7 @@ namespace MouseClickServer
                                     <td class="num">${fmt(totI)}</td>
                                     <td class="num">${pct}%</td>
                                 </tr></tbody>
-                            </table></div>`;
+                            </table></div>${hasHourly ? _renderHistograms(data, hours) : ''}`;
                         } catch { wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Ошибка загрузки</div></div>'; }
                     }
 

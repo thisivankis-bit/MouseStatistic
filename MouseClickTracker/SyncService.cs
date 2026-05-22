@@ -14,7 +14,7 @@ public sealed class SyncService : IDisposable
     private readonly string _machineId;
     private readonly string _userName;
     private readonly Action<string, string, string>? _onConfig;
-    private readonly Action<long>? _onWins;
+    private readonly Action<long, int, int>? _onWins;
     private readonly System.Threading.Timer _timer;
 
     private static readonly JsonSerializerOptions _jsonOpts =
@@ -23,7 +23,7 @@ public sealed class SyncService : IDisposable
     public SyncService(DataStore store, ActivityTracker activity,
                        string serverUrl, string machineId, string userName,
                        Action<string, string, string>? onConfig = null,
-                       Action<long>? onWins = null)
+                       Action<long, int, int>? onWins = null)
     {
         _store          = store;
         _activity       = activity;
@@ -54,6 +54,16 @@ public sealed class SyncService : IDisposable
                 inactiveSeconds = _activity.InactiveSeconds,
                 appStats        = _store.LoadAppStats()
                     .Select(x => new { processName = x.Name, seconds = x.Seconds })
+                    .ToArray(),
+                hours           = _store.LoadRecentHours(daysBack: 1)
+                    .Select(h => new {
+                        day         = h.Day,
+                        hour        = h.Hour,
+                        clicks      = h.Clicks,
+                        keys        = h.Keys,
+                        activeSec   = h.ActiveSec,
+                        inactiveSec = h.InactiveSec
+                    })
                     .ToArray()
             };
             var json = JsonSerializer.Serialize(payload);
@@ -62,7 +72,7 @@ public sealed class SyncService : IDisposable
             {
                 var reply = await JsonSerializer.DeserializeAsync<SyncReply>(
                     await resp.Content.ReadAsStreamAsync(), _jsonOpts);
-                if (reply is not null) _onWins(reply.Wins);
+                if (reply is not null) _onWins(reply.Wins, reply.Rank, reply.Total);
             }
         }
         catch { }
@@ -93,5 +103,7 @@ public sealed class SyncService : IDisposable
         [property: JsonPropertyName("resetTime")] string? ResetTime);
 
     private record SyncReply(
-        [property: JsonPropertyName("wins")] long Wins);
+        [property: JsonPropertyName("wins")]  long Wins,
+        [property: JsonPropertyName("rank")]  int  Rank,
+        [property: JsonPropertyName("total")] int  Total);
 }

@@ -2,6 +2,8 @@ using Microsoft.Data.Sqlite;
 
 namespace MouseClickTracker;
 
+public record HourBucket(string Day, int Hour, long Clicks, long Keys, long ActiveSec, long InactiveSec);
+
 public sealed class DataStore : IDisposable
 {
     private static readonly string DbPath = Path.Combine(
@@ -33,6 +35,15 @@ public sealed class DataStore : IDisposable
             CREATE TABLE IF NOT EXISTS app_stats (
                 process_name TEXT PRIMARY KEY,
                 seconds      INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS hour_stats (
+                day          TEXT    NOT NULL,
+                hour         INTEGER NOT NULL,
+                clicks       INTEGER NOT NULL DEFAULT 0,
+                keys         INTEGER NOT NULL DEFAULT 0,
+                active_sec   INTEGER NOT NULL DEFAULT 0,
+                inactive_sec INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, hour)
             );
             """;
         cmd.ExecuteNonQuery();
@@ -89,6 +100,7 @@ public sealed class DataStore : IDisposable
                 ? "UPDATE counter SET total = total + 1, synthetic_clicks = synthetic_clicks + 1"
                 : "UPDATE counter SET total = total + 1";
             cmd.ExecuteNonQuery();
+            BumpHour(clicks: 1);
         }
     }
 
@@ -114,6 +126,7 @@ public sealed class DataStore : IDisposable
                 """;
             cmd.Parameters.AddWithValue("$i", injected ? 1 : 0);
             cmd.ExecuteNonQuery();
+            BumpHour(keys: 1);
         }
     }
 
@@ -142,6 +155,71 @@ public sealed class DataStore : IDisposable
             cmd.Parameters.AddWithValue("$a", active);
             cmd.Parameters.AddWithValue("$i", inactive);
             cmd.ExecuteNonQuery();
+            BumpHour(active: active, inactive: inactive);
+        }
+    }
+
+    // Caller MUST hold _lock. Buckets into hour_stats by current local day + hour.
+    private void BumpHour(int clicks = 0, int keys = 0, int active = 0, int inactive = 0)
+    {
+        if (clicks == 0 && keys == 0 && active == 0 && inactive == 0) return;
+        var now = DateTime.Now;
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO hour_stats (day, hour, clicks, keys, active_sec, inactive_sec)
+            VALUES ($d, $h, $c, $k, $a, $i)
+            ON CONFLICT(day, hour) DO UPDATE SET
+                clicks       = clicks       + excluded.clicks,
+                keys         = keys         + excluded.keys,
+                active_sec   = active_sec   + excluded.active_sec,
+                inactive_sec = inactive_sec + excluded.inactive_sec
+            """;
+        cmd.Parameters.AddWithValue("$d", now.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("$h", now.Hour);
+        cmd.Parameters.AddWithValue("$c", clicks);
+        cmd.Parameters.AddWithValue("$k", keys);
+        cmd.Parameters.AddWithValue("$a", active);
+        cmd.Parameters.AddWithValue("$i", inactive);
+        cmd.ExecuteNonQuery();
+    }
+
+    public List<HourBucket> LoadTodayHours()
+    {
+        var today = DateTime.Now.ToString("yyyy-MM-dd");
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT day, hour, clicks, keys, active_sec, inactive_sec FROM hour_stats WHERE day = $d ORDER BY hour";
+            cmd.Parameters.AddWithValue("$d", today);
+            using var r = cmd.ExecuteReader();
+            var list = new List<HourBucket>();
+            while (r.Read())
+                list.Add(new HourBucket(r.GetString(0), r.GetInt32(1), r.GetInt64(2), r.GetInt64(3), r.GetInt64(4), r.GetInt64(5)));
+            return list;
+        }
+    }
+
+    public List<HourBucket> LoadRecentHours(int daysBack)
+    {
+        var cutoff = DateTime.Now.Date.AddDays(-daysBack).ToString("yyyy-MM-dd");
+        lock (_lock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT day, hour, clicks, keys, active_sec, inactive_sec
+                FROM hour_stats
+                WHERE day >= $d
+                ORDER BY day, hour
+                """;
+            cmd.Parameters.AddWithValue("$d", cutoff);
+            using var r = cmd.ExecuteReader();
+            var list = new List<HourBucket>();
+            while (r.Read())
+                list.Add(new HourBucket(
+                    r.GetString(0), r.GetInt32(1),
+                    r.GetInt64(2),  r.GetInt64(3),
+                    r.GetInt64(4),  r.GetInt64(5)));
+            return list;
         }
     }
 
@@ -202,6 +280,7 @@ public sealed class DataStore : IDisposable
                     synthetic_clicks = 0, key_repeat_total = 0, synthetic_keys = 0,
                     last_reset_date = $today;
                 DELETE FROM app_stats;
+                DELETE FROM hour_stats WHERE day = $today;
                 """;
             cmd.Parameters.AddWithValue("$today", DateTime.Now.ToString("yyyy-MM-dd"));
             cmd.ExecuteNonQuery();
