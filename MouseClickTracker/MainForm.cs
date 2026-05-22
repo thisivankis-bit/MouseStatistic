@@ -18,50 +18,68 @@ public class MainForm : Form
     private int _clickCount;
     private int _keyCount;
 
-    private readonly Label _labelTitle = new()
-    {
-        Text = "Кликов:",
-        Font = new Font("Segoe UI", 12),
-        AutoSize = true,
-        Location = new Point(55, 30)
-    };
+    // ── Tile grid (2×2): clicks · keys / active · inactive ──────────────────
+    private static readonly Font TileTitleFont = new("Segoe UI", 8.5f, FontStyle.Bold);
+    private static readonly Color TileTitleColor = Color.FromArgb(140, 140, 150);
+    private static readonly Color TileValueColor = Color.FromArgb(30, 30, 40);
 
-    private readonly Label _labelCount = new()
+    private static Label MakeTileTitle(string text, int x, int y) => new()
     {
-        Text = "0",
-        Font = new Font("Segoe UI", 28, FontStyle.Bold),
-        AutoSize = false,
+        Text      = text.ToUpper(),
+        Font      = TileTitleFont,
+        ForeColor = TileTitleColor,
+        AutoSize  = false,
         TextAlign = ContentAlignment.MiddleCenter,
-        Location = new Point(15, 55),
-        Size = new Size(170, 60)
+        Location  = new Point(x, y),
+        Size      = new Size(175, 16),
     };
 
-    private readonly Label _labelKeyTitle = new()
+    private static Label MakeTileValue(string text, int x, int y, float fontSize) => new()
     {
-        Text = "Клавиш:",
-        Font = new Font("Segoe UI", 12),
-        AutoSize = true,
-        Location = new Point(240, 30)
-    };
-
-    private readonly Label _labelKeyCount = new()
-    {
-        Text = "0",
-        Font = new Font("Segoe UI", 28, FontStyle.Bold),
-        AutoSize = false,
+        Text      = text,
+        Font      = new Font("Segoe UI", fontSize, FontStyle.Bold),
+        ForeColor = TileValueColor,
+        AutoSize  = false,
         TextAlign = ContentAlignment.MiddleCenter,
-        Location = new Point(195, 55),
-        Size = new Size(170, 60)
+        Location  = new Point(x, y),
+        Size      = new Size(175, 50),
     };
+
+    private readonly Label _titleClicks    = MakeTileTitle("Кликов",    10, 32);
+    private readonly Label _labelCount     = MakeTileValue("0",         10, 48, 26f);
+
+    private readonly Label _titleKeys      = MakeTileTitle("Клавиш",    205, 32);
+    private readonly Label _labelKeyCount  = MakeTileValue("0",         205, 48, 26f);
+
+    private readonly Label _titleActive    = MakeTileTitle("Активно",   10, 110);
+    private readonly Label _labelActive    = MakeTileValue("0ч 0м",     10, 126, 22f);
+
+    private readonly Label _titleInactive  = MakeTileTitle("Неактивно", 205, 110);
+    private readonly Label _labelInactive  = MakeTileValue("0ч 0м",     205, 126, 22f);
 
     private readonly Button _btnSettings = new()
     {
         Text = "Настройки",
-        Location = new Point(135, 135),
-        Size = new Size(110, 28),
-        Font = new Font("Segoe UI", 9),
+        Location = new Point(285, 198),
+        Size = new Size(95, 22),
+        Font = new Font("Segoe UI", 8.5f),
         FlatStyle = FlatStyle.Flat,
         ForeColor = Color.Gray
+    };
+
+    private readonly Label _labelHourTitle = new()
+    {
+        Text      = "Активность по часам (сегодня)",
+        Font      = new Font("Segoe UI", 8f),
+        ForeColor = Color.DimGray,
+        AutoSize  = true,
+        Location  = new Point(15, 200)
+    };
+
+    private readonly HourChart _hourChart = new()
+    {
+        Location = new Point(15, 220),
+        Size     = new Size(365, 78),
     };
 
     private readonly Label _labelSchedule = new()
@@ -69,7 +87,7 @@ public class MainForm : Form
         Font      = new Font("Segoe UI", 7.5f),
         ForeColor = Color.Gray,
         AutoSize  = true,
-        Location  = new Point(12, 170)
+        Location  = new Point(12, 308)
     };
 
     private readonly Label _labelMachineInfo = new()
@@ -77,8 +95,10 @@ public class MainForm : Form
         Font      = new Font("Segoe UI", 7.5f),
         ForeColor = Color.Silver,
         AutoSize  = true,
-        Location  = new Point(12, 188)
+        Location  = new Point(12, 326)
     };
+
+    private System.Windows.Forms.Timer? _chartTimer;
 
     private readonly Label _labelWins = new()
     {
@@ -88,6 +108,16 @@ public class MainForm : Form
         AutoSize  = true,
         Location  = new Point(330, 12)
     };
+
+    private readonly Label _labelRank = new()
+    {
+        Text      = "Место: —",
+        Font      = new Font("Segoe UI", 9f, FontStyle.Bold),
+        ForeColor = Color.DimGray,
+        AutoSize  = true,
+        Location  = new Point(15, 12)
+    };
+
 
     private readonly NotifyIcon _tray;
     private bool _realClose;
@@ -125,7 +155,7 @@ public class MainForm : Form
 
         Text = "Mouse Click Tracker";
         if (appIcon != null) Icon = appIcon;
-        Size = new Size(400, 240);
+        Size = new Size(400, 380);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -164,7 +194,22 @@ public class MainForm : Form
         };
 
         UpdateScheduleLabel();
-        Controls.AddRange(new Control[] { _labelTitle, _labelCount, _labelKeyTitle, _labelKeyCount, _btnSettings, _labelSchedule, _labelMachineInfo, _labelWins });
+        Controls.AddRange(new Control[] {
+            _labelRank, _labelWins,
+            _titleClicks, _labelCount, _titleKeys, _labelKeyCount,
+            _titleActive, _labelActive, _titleInactive, _labelInactive,
+            _btnSettings, _labelHourTitle, _hourChart, _labelSchedule, _labelMachineInfo
+        });
+        UpdateActiveTimeLabel();
+
+        RefreshHourChart();
+        _chartTimer = new System.Windows.Forms.Timer { Interval = 5_000 };
+        _chartTimer.Tick += (_, _) =>
+        {
+            RefreshHourChart();
+            UpdateActiveTimeLabel();
+        };
+        _chartTimer.Start();
 
         _hook.Clicked  += OnClicked;
         _hook.Activity += (_, _) => _activity.RegisterActivity();
@@ -183,17 +228,50 @@ public class MainForm : Form
         _workEnd   = end;
         _resetTime = reset;
         if (IsHandleCreated)
-            BeginInvoke(UpdateScheduleLabel);
+            BeginInvoke(() =>
+            {
+                UpdateScheduleLabel();
+                RefreshHourChart();
+            });
     }
 
-    private void OnWinsReceived(long wins)
+    private void RefreshHourChart()
+    {
+        try
+        {
+            var hours = _store.LoadTodayHours();
+            _hourChart.SetData(hours, _workStart, _workEnd);
+        }
+        catch { /* swallow — UI shouldn't crash on a transient SQLite lock */ }
+    }
+
+    private void OnWinsReceived(long wins, int rank, int total)
     {
         if (!IsHandleCreated) return;
         BeginInvoke(() =>
         {
             _labelWins.Text      = $"★ {wins}";
             _labelWins.ForeColor = wins > 0 ? Color.FromArgb(200, 144, 8) : Color.Silver;
+            if (rank > 0 && total > 0)
+            {
+                _labelRank.Text      = $"Место: {rank} из {total}";
+                _labelRank.ForeColor = rank == 1 ? Color.FromArgb(22, 163, 74) : Color.DimGray;
+            }
+            else
+            {
+                _labelRank.Text      = "Место: —";
+                _labelRank.ForeColor = Color.DimGray;
+            }
         });
+    }
+
+    private void UpdateActiveTimeLabel()
+    {
+        var a = _activity.ActiveSeconds;
+        var i = _activity.InactiveSeconds;
+        string Fmt(long s) => $"{s / 3600}ч {(s % 3600) / 60:D2}м";
+        _labelActive.Text   = Fmt(a);
+        _labelInactive.Text = Fmt(i);
     }
 
     private void UpdateMachineInfoLabel(AppConfig cfg)
@@ -257,6 +335,8 @@ public class MainForm : Form
             {
                 _labelCount.Text    = "0";
                 _labelKeyCount.Text = "0";
+                RefreshHourChart();
+                UpdateActiveTimeLabel();
             });
     }
 
@@ -303,6 +383,7 @@ public class MainForm : Form
         _hook.Dispose();
         _kbHook.Dispose();
         _resetTimer?.Dispose();
+        _chartTimer?.Dispose();
         _sync?.Dispose();
         _updater?.Dispose();
         _activity.Dispose();
