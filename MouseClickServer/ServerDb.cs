@@ -168,7 +168,7 @@ public sealed class ServerDb : IDisposable
             if (wasReset)
             {
                 var resetDay = DateTime.Now.ToString("yyyy-MM-dd");
-                var rz = _conn.CreateCommand();
+                using var rz = _conn.CreateCommand();
                 rz.Transaction = tx;
                 rz.CommandText = "UPDATE machine_daily SET clicks = 0, keys = 0, active_sec = 0, inactive_sec = 0 WHERE machine_id = $id AND day = $day";
                 rz.Parameters.AddWithValue("$id",  payload.MachineId);
@@ -176,7 +176,7 @@ public sealed class ServerDb : IDisposable
                 rz.ExecuteNonQuery();
             }
 
-            var m = _conn.CreateCommand();
+            using var m = _conn.CreateCommand();
             m.Transaction = tx;
             m.CommandText = """
                 INSERT INTO machines (machine_id, user_name, last_seen, total_clicks, total_keys, synthetic_clicks, key_repeats, synthetic_keys, active_seconds, inactive_seconds, recent_clicks, recent_keys)
@@ -209,15 +209,17 @@ public sealed class ServerDb : IDisposable
             m.ExecuteNonQuery();
 
             // replace app stats for this machine
-            var del = _conn.CreateCommand();
-            del.Transaction = tx;
-            del.CommandText = "DELETE FROM machine_app_stats WHERE machine_id = $id";
-            del.Parameters.AddWithValue("$id", payload.MachineId);
-            del.ExecuteNonQuery();
+            using (var del = _conn.CreateCommand())
+            {
+                del.Transaction = tx;
+                del.CommandText = "DELETE FROM machine_app_stats WHERE machine_id = $id";
+                del.Parameters.AddWithValue("$id", payload.MachineId);
+                del.ExecuteNonQuery();
+            }
 
             foreach (var app in payload.AppStats)
             {
-                var a = _conn.CreateCommand();
+                using var a = _conn.CreateCommand();
                 a.Transaction = tx;
                 a.CommandText = """
                     INSERT INTO machine_app_stats (machine_id, process_name, seconds)
@@ -235,7 +237,7 @@ public sealed class ServerDb : IDisposable
             {
                 foreach (var dayInPayload in payload.Hours.Select(h => h.Day).Distinct())
                 {
-                    var dh = _conn.CreateCommand();
+                    using var dh = _conn.CreateCommand();
                     dh.Transaction = tx;
                     dh.CommandText = "DELETE FROM machine_hourly WHERE machine_id = $id AND day = $day";
                     dh.Parameters.AddWithValue("$id",  payload.MachineId);
@@ -244,7 +246,7 @@ public sealed class ServerDb : IDisposable
                 }
                 foreach (var h in payload.Hours)
                 {
-                    var ih = _conn.CreateCommand();
+                    using var ih = _conn.CreateCommand();
                     ih.Transaction = tx;
                     ih.CommandText = """
                         INSERT INTO machine_hourly (machine_id, day, hour, clicks, keys, active_sec, inactive_sec)
@@ -265,7 +267,7 @@ public sealed class ServerDb : IDisposable
             var today = DateTime.Now.ToString("yyyy-MM-dd");
             if (dClicks > 0 || dKeys > 0 || dActive > 0 || dInactive > 0)
             {
-                var d = _conn.CreateCommand();
+                using var d = _conn.CreateCommand();
                 d.Transaction = tx;
                 d.CommandText = """
                     INSERT INTO machine_daily (machine_id, user_name, day, clicks, keys, active_sec, inactive_sec)
@@ -308,15 +310,18 @@ public sealed class ServerDb : IDisposable
             }
             if (todayClicks + todayKeys >= dailyTarget)
             {
-                var insertWinner = _conn.CreateCommand();
-                insertWinner.Transaction = tx;
-                insertWinner.CommandText = "INSERT INTO daily_winner (day, machine_id) VALUES ($day, $id) ON CONFLICT(day) DO NOTHING";
-                insertWinner.Parameters.AddWithValue("$day", today);
-                insertWinner.Parameters.AddWithValue("$id",  payload.MachineId);
-                var inserted = insertWinner.ExecuteNonQuery();
+                int inserted;
+                using (var insertWinner = _conn.CreateCommand())
+                {
+                    insertWinner.Transaction = tx;
+                    insertWinner.CommandText = "INSERT INTO daily_winner (day, machine_id) VALUES ($day, $id) ON CONFLICT(day) DO NOTHING";
+                    insertWinner.Parameters.AddWithValue("$day", today);
+                    insertWinner.Parameters.AddWithValue("$id",  payload.MachineId);
+                    inserted = insertWinner.ExecuteNonQuery();
+                }
                 if (inserted > 0)
                 {
-                    var bump = _conn.CreateCommand();
+                    using var bump = _conn.CreateCommand();
                     bump.Transaction = tx;
                     bump.CommandText = "UPDATE machines SET wins = wins + 1 WHERE machine_id = $id";
                     bump.Parameters.AddWithValue("$id", payload.MachineId);

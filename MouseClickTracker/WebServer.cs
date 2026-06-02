@@ -40,30 +40,38 @@ public sealed class WebServer : IDisposable
 
     private void Handle(HttpListenerContext ctx)
     {
-        var path = ctx.Request.Url?.AbsolutePath ?? "/";
-
-        if (path == "/api/stats")
+        try
         {
-            var (procName, title) = ForegroundApp.Get();
-            var appStats = _store.LoadAppStats()
-                .Select(x => new { name = x.Name, seconds = x.Seconds })
-                .ToArray();
+            var path = ctx.Request.Url?.AbsolutePath ?? "/";
 
-            var json = JsonSerializer.Serialize(new
+            if (path == "/api/stats")
             {
-                count            = _store.Load(),
-                keys             = _store.LoadKeys(),
-                active_seconds   = _activity.ActiveSeconds,
-                inactive_seconds = _activity.InactiveSeconds,
-                app_process      = procName,
-                app_title        = title,
-                app_stats        = appStats
-            });
-            Respond(ctx, json, "application/json");
+                var (procName, title) = ForegroundApp.Get();
+                var appStats = _store.LoadAppStats()
+                    .Select(x => new { name = x.Name, seconds = x.Seconds })
+                    .ToArray();
+
+                var json = JsonSerializer.Serialize(new
+                {
+                    count            = _store.Load(),
+                    keys             = _store.LoadKeys(),
+                    active_seconds   = _activity.ActiveSeconds,
+                    inactive_seconds = _activity.InactiveSeconds,
+                    app_process      = procName,
+                    app_title        = title,
+                    app_stats        = appStats
+                });
+                Respond(ctx, json, "application/json");
+            }
+            else
+            {
+                Respond(ctx, Html, "text/html; charset=utf-8");
+            }
         }
-        else
+        catch
         {
-            Respond(ctx, Html, "text/html; charset=utf-8");
+            // Even on failure, close the response so the underlying socket and buffers are released.
+            try { ctx.Response.Close(); } catch { }
         }
     }
 
