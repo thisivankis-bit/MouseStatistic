@@ -257,12 +257,12 @@ namespace MouseClickServer
                     .rep-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 22px; }
                     .rep-quick    { display: flex; gap: 8px; flex-wrap: wrap; }
                     .rep-custom   { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-                    .rep-btn {
+                    .rep-btn, .an-btn {
                         padding: 7px 16px; border: 1.5px solid #e0e0f0; border-radius: 8px; background: white;
                         font-size: 0.82rem; font-family: inherit; color: #666; cursor: pointer; transition: all 0.15s;
                     }
-                    .rep-btn:hover { border-color: #4f46e5; color: #4f46e5; }
-                    .rep-btn.active { background: #4f46e5; color: white; border-color: #4f46e5; font-weight: 600; }
+                    .rep-btn:hover, .an-btn:hover { border-color: #4f46e5; color: #4f46e5; }
+                    .rep-btn.active, .an-btn.active { background: #4f46e5; color: white; border-color: #4f46e5; font-weight: 600; }
                     .rep-date {
                         padding: 6px 10px; border: 1.5px solid #e0e0f0; border-radius: 8px;
                         font-family: inherit; font-size: 0.84rem; color: #333; outline: none;
@@ -292,12 +292,13 @@ namespace MouseClickServer
                     .rep-empty { text-align: center; padding: 48px 0; color: #ccc; font-size: 0.88rem; }
 
                     .rep-hist-title { font-size: 0.95rem; font-weight: 600; color: #444; margin: 28px 0 14px 4px; }
-                    .rep-hist-card  { background: white; border-radius: 14px; padding: 16px 20px 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); margin-bottom: 12px; }
+                    .an-grid        { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+                    .rep-hist-card  { background: white; border-radius: 14px; padding: 14px 16px 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); }
                     .rep-hist-head  { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
                     .rep-hist-name  { font-weight: 600; color: #222; font-size: 0.9rem; }
                     .rep-hist-sub   { font-size: 0.7rem; color: #bbb; }
-                    .rep-hist-bars   { display: flex; align-items: flex-end; gap: 6px; height: 92px; padding-bottom: 18px; position: relative; }
-                    .hist-col        { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; }
+                    .rep-hist-bars   { display: flex; align-items: flex-end; gap: 4px; height: 92px; padding-bottom: 18px; position: relative; }
+                    .hist-col        { width: 22px; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; }
                     .hist-val        { font-size: 0.62rem; color: #444; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 3px; }
                     .hist-frame      { width: 100%; max-width: 28px; height: 60px; border: 1px solid #d6dae4; border-radius: 3px; background: #fafbfd; position: relative; overflow: hidden; transition: filter 0.15s; }
                     .hist-fill-act   { position: absolute; left: 0; right: 0; bottom: 0; }
@@ -313,6 +314,7 @@ namespace MouseClickServer
                     <button class="tab-btn active" data-tab="stats">Статистика</button>
                     <button class="tab-btn"        data-tab="people">Офис</button>
                     <button class="tab-btn"        data-tab="reports">Отчёты</button>
+                    <button class="tab-btn"        data-tab="analytics">Аналитика</button>
                     <button class="tab-btn"        data-tab="schedule">Расписание</button>
                 </div>
 
@@ -353,6 +355,24 @@ namespace MouseClickServer
                         <div class="summary-card"><div class="s-label">% активности</div><div class="s-value" id="rep-s-pct">—</div></div>
                     </div>
                     <div id="rep-table-wrap"></div>
+                </div>
+
+                <div id="tab-analytics" style="display:none">
+                    <div class="rep-controls">
+                        <div class="rep-quick">
+                            <button class="an-btn active" data-range="today">Сегодня</button>
+                            <button class="an-btn" data-range="yesterday">Вчера</button>
+                            <button class="an-btn" data-range="week">7 дней</button>
+                            <button class="an-btn" data-range="month">30 дней</button>
+                        </div>
+                        <div class="rep-custom">
+                            <input type="date" id="an-from" class="rep-date">
+                            <span style="color:#bbb">—</span>
+                            <input type="date" id="an-to" class="rep-date">
+                            <button id="an-load" class="rep-submit">Показать</button>
+                        </div>
+                    </div>
+                    <div id="an-wrap"></div>
                 </div>
 
                 <div id="tab-schedule" style="display:none">
@@ -397,12 +417,14 @@ namespace MouseClickServer
                         btn.addEventListener('click', () => {
                             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                             btn.classList.add('active');
-                            document.getElementById('tab-stats').style.display    = btn.dataset.tab === 'stats'    ? '' : 'none';
-                            document.getElementById('tab-people').style.display   = btn.dataset.tab === 'people'   ? '' : 'none';
-                            document.getElementById('tab-reports').style.display  = btn.dataset.tab === 'reports'  ? '' : 'none';
-                            document.getElementById('tab-schedule').style.display = btn.dataset.tab === 'schedule' ? '' : 'none';
-                            if (btn.dataset.tab === 'schedule') loadSchedule();
-                            if (btn.dataset.tab === 'reports')  loadReport();
+                            document.getElementById('tab-stats').style.display     = btn.dataset.tab === 'stats'     ? '' : 'none';
+                            document.getElementById('tab-people').style.display    = btn.dataset.tab === 'people'    ? '' : 'none';
+                            document.getElementById('tab-reports').style.display   = btn.dataset.tab === 'reports'   ? '' : 'none';
+                            document.getElementById('tab-analytics').style.display = btn.dataset.tab === 'analytics' ? '' : 'none';
+                            document.getElementById('tab-schedule').style.display  = btn.dataset.tab === 'schedule'  ? '' : 'none';
+                            if (btn.dataset.tab === 'schedule')  loadSchedule();
+                            if (btn.dataset.tab === 'reports')   loadReport();
+                            if (btn.dataset.tab === 'analytics') loadAnalytics();
                         });
                     });
 
@@ -432,6 +454,52 @@ namespace MouseClickServer
                         document.querySelectorAll('.rep-btn').forEach(b => b.classList.remove('active'));
                         loadReport();
                     });
+
+                    // ── Analytics tab ─────────────────────────────────────────
+                    (function() {
+                        const t = new Date();
+                        const iso = d => d.toISOString().slice(0, 10);
+                        document.getElementById('an-from').value = iso(t);
+                        document.getElementById('an-to').value   = iso(t);
+                    })();
+
+                    document.querySelectorAll('.an-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            document.querySelectorAll('.an-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            const t = new Date(), y = new Date(t);
+                            const iso = d => d.toISOString().slice(0, 10);
+                            if      (btn.dataset.range === 'yesterday') { y.setDate(t.getDate()-1);  document.getElementById('an-from').value = iso(y); document.getElementById('an-to').value = iso(y); }
+                            else if (btn.dataset.range === 'week')      { y.setDate(t.getDate()-6);  document.getElementById('an-from').value = iso(y); document.getElementById('an-to').value = iso(t); }
+                            else if (btn.dataset.range === 'month')     { y.setDate(t.getDate()-29); document.getElementById('an-from').value = iso(y); document.getElementById('an-to').value = iso(t); }
+                            else { document.getElementById('an-from').value = iso(t); document.getElementById('an-to').value = iso(t); }
+                            loadAnalytics();
+                        });
+                    });
+
+                    document.getElementById('an-load').addEventListener('click', () => {
+                        document.querySelectorAll('.an-btn').forEach(b => b.classList.remove('active'));
+                        loadAnalytics();
+                    });
+
+                    async function loadAnalytics() {
+                        const from = document.getElementById('an-from').value;
+                        const to   = document.getElementById('an-to').value;
+                        if (!from || !to) return;
+                        const wrap = document.getElementById('an-wrap');
+                        wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Загрузка…</div></div>';
+                        try {
+                            const [data, cfg] = await Promise.all([
+                                fetch(`/api/stats?from=${from}&to=${to}`).then(r => r.json()),
+                                fetch('/api/config').then(r => r.json()).catch(() => null)
+                            ]);
+                            if (!data.length || !data.some(m => (m.byHour || []).length > 0)) {
+                                wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Нет данных за выбранный период</div></div>';
+                                return;
+                            }
+                            wrap.innerHTML = _renderHistograms(data, _hourRange(cfg));
+                        } catch { wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Ошибка загрузки</div></div>'; }
+                    }
 
                     function _hourRange(cfg) {
                         // Return inclusive hour list to plot. Use schedule window if defined; otherwise 0..23.
@@ -487,7 +555,9 @@ namespace MouseClickServer
                                 <div class="rep-hist-bars">${cols}</div>
                             </div>`;
                         }).join('');
-                        return `<div class="rep-hist-title">Активность по часам — доля минут с активностью</div>${items}`;
+                        // bars row width = cols*22 + (cols-1)*4 + card padding 32 + small margin
+                        const cardW = Math.max(280, hours.length * 26 + 40);
+                        return `<div class="an-grid" style="grid-template-columns:repeat(auto-fill,minmax(${cardW}px,1fr))">${items}</div>`;
                     }
                     async function loadReport() {
                         const from = document.getElementById('rep-from').value;
@@ -532,8 +602,6 @@ namespace MouseClickServer
                                 </tr>`;
                             }).join('');
                             const n = data.length, s = n===1?'':'а';
-                            const hours = _hourRange(cfg);
-                            const hasHourly = data.some(m => (m.byHour || []).length > 0);
                             wrap.innerHTML = `<div class="rep-card"><table class="rep-table">
                                 <thead><tr>
                                     <th>Сотрудник</th>
@@ -552,7 +620,7 @@ namespace MouseClickServer
                                     <td class="num">${fmt(totI)}</td>
                                     <td class="num">${pct}%</td>
                                 </tr></tbody>
-                            </table></div>${hasHourly ? _renderHistograms(data, hours) : ''}`;
+                            </table></div>`;
                         } catch { wrap.innerHTML = '<div class="rep-card"><div class="rep-empty">Ошибка загрузки</div></div>'; }
                     }
 
